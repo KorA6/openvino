@@ -17,14 +17,16 @@
 #include <samples/common.hpp>
 #include <samples/slog.hpp>
 #include <samples/args_helper.hpp>
+#include <ngraph/function.hpp>
 
+#include "../../src/plugin_api/exec_graph_info.hpp"
 #include "benchmark_app.hpp"
 #include "infer_request_wrap.hpp"
+#include "inputs_filling.hpp"
 #include "progress_bar.hpp"
 #include "statistics_report.hpp"
-#include "inputs_filling.hpp"
 #include "utils.hpp"
-
+#include <ngraph/variant.hpp>
 using namespace InferenceEngine;
 
 static const size_t progressBarDefaultTotalCount = 1000;
@@ -608,6 +610,25 @@ int main(int argc, char *argv[]) {
             slog::info << "Inference Engine configuration settings were dumped to " << FLAGS_dump_config << slog::endl;
         }
 #endif
+
+
+CNNNetwork execGraphInfo = exeNetwork.GetExecGraphInfo();
+auto function = execGraphInfo.getFunction();
+auto ops = function->get_ops();
+{
+    for (const auto& op : ops) {
+        auto & rtInfo = op->get_rt_info();
+        int i = 0;
+        for (auto& elem : rtInfo) {
+            if (!i){ ++i;
+                continue;
+            }
+            auto variantWrapper = std::dynamic_pointer_cast<ngraph::VariantWrapper<std::string>>(elem.second);
+            std::cout << elem.first << " = " << variantWrapper->get() << "; ";
+        }
+        std::cout << std::endl << std::endl;
+    }
+}
 
         if (!FLAGS_exec_graph_path.empty()) {
             try {
