@@ -140,21 +140,21 @@ void FrontEnd::detectNetworkBatch(
             if (layer->get_output_size() == 0)
                 VPU_THROW_FORMAT("Unsupported layer %s configuration: no outputs", layer->get_name());
 
-            // 1. Don't support if DetectionOutput is not the last layer in network
-            for (const auto& outputHandle : layer->outputs()) {
-                for (const auto& inputHandle : outputHandle.get_target_inputs()) {
-                    auto outNode = inputHandle.get_node();
-                    if (dynamic_cast<::ngraph::opset3::Result *>(outNode)) {
-                        continue;
-                    }
-                    VPU_THROW_FORMAT("Unsupported layer %s configuration : it is not a network output", layer->get_name());
-                }
-            }
+            // // 1. Don't support if DetectionOutput is not the last layer in network
+            // for (const auto& outputHandle : layer->outputs()) {
+            //     for (const auto& inputHandle : outputHandle.get_target_inputs()) {
+            //         auto outNode = inputHandle.get_node();
+            //         if (dynamic_cast<::ngraph::opset3::Result *>(outNode)) {
+            //             continue;
+            //         }
+            //         VPU_THROW_FORMAT("Unsupported layer %s configuration : it is not a network output", layer->get_name());
+            //     }
+            // }
 
-            // 2. Don't support if there multiple outputs as well
-            if (outputsInfo.size() != 1) {
-                VPU_THROW_FORMAT("Unsupported network configuration : layer %s must be the only output of the network", layer->get_name());
-            }
+            // // 2. Don't support if there multiple outputs as well
+            // if (outputsInfo.size() != 1) {
+            //     VPU_THROW_FORMAT("Unsupported network configuration : layer %s must be the only output of the network", layer->get_name());
+            // }
             model->attrs().set<bool>("withDetectionOutput", true);
         }
     }
