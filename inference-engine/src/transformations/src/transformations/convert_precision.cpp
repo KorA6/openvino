@@ -79,7 +79,7 @@ NGRAPH_RTTI_DEFINITION(ngraph::pass::ConvertPrecision, "ConvertPrecision", 0);
 
 bool ngraph::pass::ConvertPrecision::run_on_function(std::shared_ptr<ngraph::Function> f) {
     RUN_ON_FUNCTION_SCOPE(ConvertPrecision);
-    static std::map<ngraph::NodeTypeInfo, std::function<bool(std::shared_ptr<Node>&, element::Type, size_t idx)>> type_to_fuse {
+    std::map<ngraph::NodeTypeInfo, std::function<bool(std::shared_ptr<Node>&, element::Type, size_t idx)>> type_to_fuse {
         {opset4::Parameter::type_info, fuse_type_to_parameter},
         {opset4::Convert::type_info, fuse_type_to_convert},
         {opset4::ShapeOf::type_info, fuse_type_to_shapeof},
@@ -104,6 +104,8 @@ bool ngraph::pass::ConvertPrecision::run_on_function(std::shared_ptr<ngraph::Fun
         {opset4::ReduceLogicalOr::type_info, fuse_type_to_reduce_logical<opset4::ReduceLogicalOr>},
         {opset1::ShapeOf::type_info, fuse_type_to_shapeof_v0}
     };
+    
+    type_to_fuse.insert(m_additional_fuse_map.begin(), m_additional_fuse_map.end());
 
     static std::map<ngraph::NodeTypeInfo, std::function<bool(std::shared_ptr<Node>&, element::Type, size_t idx)>> type_to_extend {
             {opset4::Select::type_info, extend_select_type},
@@ -125,7 +127,7 @@ bool ngraph::pass::ConvertPrecision::run_on_function(std::shared_ptr<ngraph::Fun
         }
     };
 
-    auto convert_node_output_precision = [this, &const_to_internal_output](std::shared_ptr<Node> & node) {
+    auto convert_node_output_precision = [this, &const_to_internal_output, &type_to_fuse](std::shared_ptr<Node> & node) {
         for (auto output : node->outputs()) {
             if (output.get_element_type() == m_from) {
                 // Handle case with Constants as they can have consumers from other nGraph Function object

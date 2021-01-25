@@ -72,12 +72,15 @@ class TRANSFORMATIONS_API ConvertPrecision;
 class ngraph::pass::ConvertPrecision : public ngraph::pass::FunctionPass {
 public:
     NGRAPH_RTTI_DECLARATION;
-    ConvertPrecision(ngraph::element::Type_t from, ngraph::element::Type_t to)
+    ConvertPrecision(ngraph::element::Type_t from, ngraph::element::Type_t to, 
+                        std::map<ngraph::NodeTypeInfo, std::function<bool(std::shared_ptr<Node>&, element::Type, size_t idx)>> additional_fuse_map = {})
         : FunctionPass(),
         m_from(from),
-        m_to(to) {}
+        m_to(to),
+        m_additional_fuse_map(additional_fuse_map) {}
 
     bool run_on_function(std::shared_ptr<Function> f) override;
 private:
     element::Type m_from, m_to;
+    std::map<ngraph::NodeTypeInfo, std::function<bool(std::shared_ptr<Node>&, element::Type, size_t idx)>> m_additional_fuse_map;
 };

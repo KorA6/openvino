@@ -30,9 +30,11 @@ public:
     void setSpecialZero(bool special_zero) { m_specialZero = special_zero; }
 
     bool evaluate(const HostTensorVector& outputs, const HostTensorVector& inputs) const override;
-
+    void set_output_type(ngraph::element::Type t) { m_output_type = t;}
+    using Node::set_output_type;
 private:
     bool m_specialZero;
+    element::Type m_output_type = element::i64;
 };
 
 }  // namespace op
