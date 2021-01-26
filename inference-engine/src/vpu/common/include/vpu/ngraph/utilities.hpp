@@ -6,13 +6,29 @@
 
 #include "ngraph/node.hpp"
 #include "ngraph/type/element_type.hpp"
+#include "ngraph/type.hpp"
 
 #include "vpu/utils/error.hpp"
-
+#include "vpu/ngraph/operations/static_shape_non_maximum_suppression.hpp"
+#include "vpu/ngraph/operations/static_shape_nonzero.hpp"
+#include "vpu/ngraph/operations/static_shape_topk.hpp"
+#include "vpu/ngraph/operations/out_shape_of_reshape.hpp"
 #include <stack>
 #include <deque>
 
 namespace vpu {
+
+bool fuse_type_to_ss_NMS(std::shared_ptr<ngraph::Node> & node, ngraph::element::Type to, size_t idx);
+bool fuse_type_to_ss_NZ(std::shared_ptr<ngraph::Node> & node, ngraph::element::Type to, size_t idx);
+bool fuse_type_to_ss_TOPK(std::shared_ptr<ngraph::Node> & node, ngraph::element::Type to, size_t idx);
+bool fuse_type_to_out_shape_of_reshape(std::shared_ptr<ngraph::Node> & node, ngraph::element::Type to, size_t idx);
+
+static std::map<ngraph::NodeTypeInfo, std::function<bool(std::shared_ptr<ngraph::Node>&, ngraph::element::Type, size_t idx)>> myriad_type_to_fuse {
+     {ngraph::vpu::op::StaticShapeNonMaxSuppression::type_info, fuse_type_to_ss_NMS},
+     {ngraph::vpu::op::StaticShapeNonZero::type_info, fuse_type_to_ss_NZ},
+     {ngraph::vpu::op::StaticShapeTopK::type_info, fuse_type_to_ss_TOPK},
+     {ngraph::vpu::op::OutShapeOfReshape::type_info, fuse_type_to_out_shape_of_reshape},
+};
 
 std::vector<std::int64_t> evaluateTargetShape(const ngraph::Output<ngraph::Node>& value);
 

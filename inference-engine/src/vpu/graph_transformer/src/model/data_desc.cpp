@@ -651,6 +651,8 @@ DataType fromIEPrecision(const InferenceEngine::Precision& precision) {
         case InferenceEngine::Precision::I32:  return DataType::S32;
         case InferenceEngine::Precision::FP16: return DataType::FP16;
         case InferenceEngine::Precision::FP32: return DataType::FP32;
+        case InferenceEngine::Precision::I64: return DataType::S32;
+        case InferenceEngine::Precision::BOOL: return DataType::S32;
         default: VPU_THROW_EXCEPTION << precision << " isn't supported";
     }
 }

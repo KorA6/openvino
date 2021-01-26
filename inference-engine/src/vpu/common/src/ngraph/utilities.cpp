@@ -84,6 +84,40 @@ std::shared_ptr<ngraph::Node> gatherShapeElements(const ngraph::Output<ngraph::N
         shape,
         ngraph::opset5::Constant::create(ngraph::element::i64, {elemCount}, shapePart),
         ngraph::opset5::Constant::create(ngraph::element::i64, {}, {0}));
+
 }
 
-}  // namespace vpu
+bool fuse_type_to_ss_NMS(std::shared_ptr<ngraph::Node> & node, ngraph::element::Type to, size_t idx) {
+    if (auto nms = ngraph::as_type_ptr<ngraph::vpu::op::StaticShapeNonMaxSuppression>(node)) {
+        nms->set_output_type(to);
+        return true;
+    }
+    return false;
+}
+
+bool fuse_type_to_ss_NZ(std::shared_ptr<ngraph::Node> & node, ngraph::element::Type to, size_t idx) {
+    if (auto nz = ngraph::as_type_ptr<ngraph::vpu::op::StaticShapeNonZero>(node))
+    {
+        nz->set_output_type(to);
+        return true;
+    }
+    return false;
+}
+
+bool fuse_type_to_ss_TOPK(std::shared_ptr<ngraph::Node> & node, ngraph::element::Type to, size_t idx) {
+    if (auto topk = ngraph::as_type_ptr<ngraph::vpu::op::StaticShapeTopK>(node)) {
+        topk->set_index_element_type(to);
+        return true;
+    }
+    return false;
+}
+
+bool fuse_type_to_out_shape_of_reshape(std::shared_ptr<ngraph::Node> &node, ngraph::element::Type to, size_t idx) {
+    if (auto osr = ngraph::as_type_ptr<ngraph::vpu::op::OutShapeOfReshape>(node))
+    {
+        osr->set_output_type(to);
+        return true;
+    }
+    return false;
+}
+} // namespace vpu
