@@ -32,6 +32,7 @@
 #include <transformations/op_conversions/softplus_decomposition.hpp>
 #include <transformations/op_conversions/convert_minimum_to_power_and_max.hpp>
 #include <transformations/op_conversions/hswish_decomposition.hpp>
+#include <transformations/convert_precision.hpp>
 #include <legacy/transformations/convert_opset1_to_legacy/convert_opset1_to_legacy.hpp>
 #include <legacy/transformations/convert_opset1_to_legacy/convert_prior_to_ie_prior.hpp>
 #include <transformations/common_optimizations/common_optimizations.hpp>
@@ -41,6 +42,7 @@
 #include "vpu/ngraph/transformations/dynamic_to_static_shape.hpp"
 #include "vpu/ngraph/transformations/eliminate_shapeof_after_dsr.hpp"
 #include <vpu/ngraph/operations/dynamic_shape_resolver.hpp>
+#include <vpu/ngraph/utilities.hpp>
 #include <legacy/ie_util_internal.hpp>
 #include <legacy/transformations/convert_opset1_to_legacy/convert_gather_to_gather_ie.hpp>
 #include <legacy/transformations/convert_opset1_to_legacy/convert_matmul_to_fc_or_gemm.hpp>
@@ -48,7 +50,6 @@
 #include <vpu/ngraph/transformations/extract_dynamic_batch/extract_dynamic_batch.hpp>
 
 namespace vpu {
-
 FrontEnd::FrontEnd(StageBuilder::Ptr stageBuilder, const ie::ICore* core)
     : _stageBuilder(std::move(stageBuilder)),
     _core(core),
@@ -178,12 +179,24 @@ ie::CNNNetwork FrontEnd::convertNetwork(ie::CNNNetwork& network) {
         ngraph::opset5::Convolution::type_info,
         ngraph::opset5::GroupConvolution::type_info
     });
-
+    const std::vector<std::pair<ngraph::element::Type, ngraph::element::Type>> convert_precision_list{
+        {ngraph::element::i64, ngraph::element::i32},
+        {ngraph::element::u64, ngraph::element::i32},
+        {ngraph::element::u32, ngraph::element::i32},
+        {ngraph::element::u16, ngraph::element::i32},
+        {ngraph::element::boolean, ngraph::element::i32},
+    };
+    for (const auto &precision : convert_precision_list)
+    {
+        manager.register_pass<ngraph::pass::ConvertPrecision>(precision.first, precision.second, myriad_type_to_fuse);
+    }
     manager.register_pass<vpu::DynamicToStaticShape>();
     manager.register_pass<vpu::EliminateShapeOfAfterDSR>();
     manager.register_pass<vpu::ConvertExtractImagePatchesToReorgYolo>();
     manager.register_pass<ngraph::pass::ConvertOpSet3ToOpSet2>();
     manager.register_pass<ngraph::pass::ConvertOpSet2ToOpSet1>();
+    
+    manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::i64, ngraph::element::i32, myriad_type_to_fuse);
     manager.register_pass<ngraph::pass::ConvertOpSet1ToLegacy>();
     manager.register_pass<vpu::MergeSubsequentDSROperations>();
 
@@ -200,6 +213,7 @@ ie::CNNNetwork FrontEnd::convertNetwork(ie::CNNNetwork& network) {
     pass_config->set_callback<ngraph::pass::ConvertMatMulToFC,
                               ngraph::pass::ConvertStridedSliceToCropMatcher>(transformationPredicate);
 
+    
     manager.run_passes(nGraphFunc);
 
     return ie::CNNNetwork(ie::details::convertFunctionToICNNNetwork(nGraphFunc, network));
@@ -446,13 +460,8 @@ ModelPtr FrontEnd::runCommonPasses(ie::CNNNetwork network,
         if (network.getFunction()) {
             network = convertNetwork(network);
         }
-
-        ie::NetPass::ConvertPrecision(network, ie::Precision::I64, ie::Precision::I32);
-        ie::NetPass::ConvertPrecision(network, ie::Precision::U32, ie::Precision::I32);
-        ie::NetPass::ConvertPrecision(network, ie::Precision::U64, ie::Precision::I32);
-        ie::NetPass::ConvertPrecision(network, ie::Precision::BOOL, ie::Precision::I32);
-
-        removeConstLayers(network);
+ 
+        removeConstLayers(*network);
 
         unrollLoops(network);
     }
