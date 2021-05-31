@@ -20,10 +20,10 @@ PriorBoxContent::PriorBoxContent(
         const DataDesc& inDesc0,
         const DataDesc& inDesc1,
         const DataDesc& outDesc,
-        const ie::CNNLayerPtr &layer) :
+        const NodePtr &node) :
         _inDesc0(inDesc0), _inDesc1(inDesc1), _outDesc(outDesc),
-        _layer(layer) {
-    IE_ASSERT(layer != nullptr);
+        _node(node) {
+    IE_ASSERT(node != nullptr);
 }
 
 size_t PriorBoxContent::byteSize() const {
@@ -33,16 +33,18 @@ size_t PriorBoxContent::byteSize() const {
 
 void PriorBoxContent::fillTempBuf(void* tempBuf) const {
     VPU_PROFILE(PriorBoxContent);
-
+    
     auto tempPtr = static_cast<fp16_t*>(tempBuf);
-
-    auto _min_sizes = _layer->GetParamAsFloats("min_size", {});
-    auto _max_sizes = _layer->GetParamAsFloats("max_size", {});
-    auto aspect_ratios = _layer->GetParamAsFloats("aspect_ratio");
-    auto _flip = static_cast<bool>(_layer->GetParamAsInt("flip"));
-    auto _clip = static_cast<bool>(_layer->GetParamAsInt("clip"));
-    auto _variance = _layer->GetParamAsFloats("variance");
-    auto _img_h = _layer->GetParamAsInt("img_h", 0);
+    auto priorBox = ngraph::as_type_ptr<ngraph::op::v0::PriorBox>(_node);
+    IE_ASSERT(priorBox != nullptr);
+    auto attrs = priorBox->get_attrs();
+    auto _min_sizes = attrs.min_size;
+    auto _max_sizes = attrs.max_size;
+    auto aspect_ratios = attrs.aspect_ratio;
+    auto _flip = attrs.flip;
+    auto _clip = attrs.clip;
+    auto _variance = attrs.variance;
+    auto _img_h = attrs. _layer->GetParamAsInt("img_h", 0);
     auto _img_w = _layer->GetParamAsInt("img_w", 0);
     auto _step = _layer->GetParamAsFloat("step", 0);
     auto _offset = _layer->GetParamAsFloat("offset", 0);

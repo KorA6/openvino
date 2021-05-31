@@ -10,7 +10,7 @@
 #include <caseless.hpp>
 
 #include <vpu/compile_env.hpp>
-
+#include <frontend.hpp>
 namespace vpu {
 
 IeParsedNetwork parseNetwork(const ie::CNNNetwork& network) {
@@ -31,26 +31,26 @@ IeParsedNetwork parseNetwork(const ie::CNNNetwork& network) {
     IE_ASSERT(!out.networkOutputs.empty());
 
     env.log->trace("Perform topological sort");
-    const auto sortedLayers = ie::details::CNNNetSortTopologically(network);
-    IE_ASSERT(!sortedLayers.empty());
+    const auto sortedNodes = network.getFunction()->get_ordered_ops();
+    IE_ASSERT(!sortedNodes.empty());
 
-    for (const auto& layer : sortedLayers) {
+    for (const auto& node : sortedNodes) {
         VPU_LOGGER_SECTION(env.log);
 
-        IE_ASSERT(layer != nullptr);
+        IE_ASSERT(node != nullptr);
 
-        if (cmp(layer->type, "Input")) {
-            env.log->trace("Found Input layer : %s", layer->name);
+        if (cmp(node->get_type_name(), "Input")) {
+            env.log->trace("Found Input layer : %s", node->get_friendly_name());
             continue;
         }
 
-        if (cmp(layer->type, "Const")) {
-            env.log->trace("Found Const layer : %s", layer->name);
+        if (cmp(node->get_type_name(), "Const")) {
+            env.log->trace("Found Const layer : %s", node->get_friendly_name());
 
-            if (layer->outData.size() != 1) {
+            if (node->get_output_size() != 1) {
                 VPU_THROW_FORMAT(
                     "Const layer %v has unsupported number of outputs %v",
-                    layer->name, layer->outData.size());
+                    node->get_friendly_name(), node->get_output_size());
             }
 
             if (layer->blobs.size() != 1) {

@@ -98,14 +98,15 @@ protected:
 
 void FrontEnd::parseBroadcast(
         const Model& model,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const DataVector& inputs,
         const DataVector& outputs) const {
-    VPU_THROW_UNLESS(layer != nullptr,
-                     "parseBroadcast expects valid CNNLayerPtr, got nullptr");
+    auto broadcast = ngraph::as_type_ptr<ngraph::op::v3::Broadcast>(node);
+    VPU_THROW_UNLESS(broadcast != nullptr,
+                     "parseBroadcast expects valid NodePtr, got nullptr");
     VPU_THROW_UNLESS(outputs.size() == 1,
                      "{} layer with name {} must have only 1 output, actually provided {} outputs",
-                     layer->type, layer->name, outputs.size());
+                     broadcast->get_type_name(), broadcast->get_name(), outputs.size());
     const auto output = outputs[0];
     const auto modeString = layer->GetParamAsString("mode", "numpy");
     const std::map<std::string, BroadcastMode> modeFromString = {

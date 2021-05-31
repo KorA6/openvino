@@ -59,7 +59,7 @@ int getMaxOutputChannels(const HwConvTilingPtr& tiling) {
 
 void HWConvStageTiler::addPoolStage(const HWConvStageIO& stageIO, const HWConvStageOptions& stageOptions) {
     const auto& name = _original->name();
-    const auto& orig = _original->origLayer();
+    const auto& orig = _original->origNode();
 
     auto hwPoolInput = _model->addNewData(name, stageIO.origOutputDesc);
     hwPoolInput->attrs().copyFrom(stageIO.origOutput->attrs());

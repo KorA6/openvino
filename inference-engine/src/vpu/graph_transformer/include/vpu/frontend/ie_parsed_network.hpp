@@ -18,7 +18,7 @@ struct IeParsedNetwork final {
     ie::InputsDataMap networkInputs;
     ie::OutputsDataMap networkOutputs;
     std::vector<std::pair<ie::DataPtr, ie::Blob::Ptr>> constDatas;
-    std::vector<ie::CNNLayerPtr> orderedLayers;
+    ngraph::NodeVector orderedOps;
 };
 
 IeParsedNetwork parseNetwork(const ie::CNNNetwork& network);

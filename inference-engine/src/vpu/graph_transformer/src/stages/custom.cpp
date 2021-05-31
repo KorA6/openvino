@@ -309,14 +309,14 @@ static SmallVector<int> calcSizesFromParams(const DataDesc& desc, const SmallVec
     return sizes;
 }
 
-void FrontEnd::parseCustom(const Model& model, const ie::CNNLayerPtr& layer, const DataVector& inputs, const DataVector& outputs) {
-    IE_ASSERT(layer != nullptr);
+void FrontEnd::parseCustom(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) {
+    IE_ASSERT(node != nullptr);
     IE_ASSERT(outputs.size() == 1);
 
     const auto suitableLayer = [&] {
-        const auto customLayersForType = _customLayers.find(layer->type);
+        const auto customLayersForType = _customLayers.find(node->get_type_name());
         IE_ASSERT(customLayersForType != _customLayers.end());
-        return getSuitableCustomLayer(customLayersForType->second, layer);
+        return getSuitableCustomLayer(customLayersForType->second, node);
     }();
     IE_ASSERT(suitableLayer);
 
@@ -481,5 +481,7 @@ void FrontEnd::parseCustom(const Model& model, const ie::CNNLayerPtr& layer, con
         model->addTempBuffer(stage, buffer_size);
     }
 }
+
+
 
 }  // namespace vpu

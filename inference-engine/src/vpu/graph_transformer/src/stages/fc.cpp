@@ -13,14 +13,13 @@
 
 namespace vpu {
 
-void FrontEnd::parseFullyConnected(const Model& model, const ie::CNNLayerPtr& _layer, const DataVector& inputs, const DataVector& outputs) const {
+void FrontEnd::parseFullyConnected(const Model& model, const NodePtr& _node, const DataVector& inputs, const DataVector& outputs) const {
     const auto& env = CompileEnv::get();
 
     IE_ASSERT(inputs.size() == 1);
     IE_ASSERT(outputs.size() == 1);
-
-    auto layer = std::dynamic_pointer_cast<ie::FullyConnectedLayer>(_layer);
-    IE_ASSERT(layer != nullptr);
+    auto node = ngraph::as_type_ptr<ngraph::opset4::FullyConnected>(_node);
+    IE_ASSERT(node != nullptr);
 
     auto input = inputs[0];
     auto output = outputs[0];

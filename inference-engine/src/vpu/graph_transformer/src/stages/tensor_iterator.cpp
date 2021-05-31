@@ -20,8 +20,18 @@
 namespace vpu {
 
 namespace {
+struct PortMap {
+    // Data map rule
+    int from; /**< Index of exteral data from ins/outs fields of CNNLayer */
+    int to;   /**< Index of internal data in iterator body */
 
-using PortMap = ie::TensorIterator::PortMap;
+    // Iteration rule
+    int axis;      /**< Axis to iterate throught */
+    int stride;    /**< Stride to iterate throught */
+    int start;     /**< Start index of iteration range */
+    int end;       /**< Last index of iteration range  */
+    int part_size; /**< Part size which will be transfered to body subnetwork */
+};
 
 constexpr auto s_curIterPort   = "loop_body_current_iteration_idx";
 constexpr auto s_tripCountPort = "loop_trip_count_idx";
@@ -32,8 +42,8 @@ bool isIterable(const PortMap& rule) {
     return rule.axis != -1;
 }
 
-bool isIterableInput(const ie::DataPtr& data, const std::shared_ptr<ie::TensorIterator>& tensorIterator) {
-    const auto isInput = [&data, &tensorIterator](const PortMap& rule) { return tensorIterator->body.inputs[rule.to] == data; };
+bool isIterableInput(const ie::DataPtr& data, const std::shared_ptr<ngraph::opset4::TensorIterator>& tensorIterator) {
+    const auto isInput = [&data, &tensorIterator](const PortMap& rule) { return tensorIterator->get_body()->ge .inputs[rule.to] == data; };
     const auto& rules = tensorIterator->input_port_map;
     return std::any_of(rules.begin(), rules.end(), [&isInput](const PortMap& rule) { return isIterable(rule) && isInput(rule); });
 }
@@ -44,7 +54,7 @@ bool isIterableOutput(const ie::DataPtr& data, const std::shared_ptr<ie::TensorI
     return std::any_of(rules.begin(), rules.end(), [&isOutput](const PortMap& rule) { return isIterable(rule) && isOutput(rule); });
 }
 
-bool isIterable(const ie::DataPtr& data, const std::shared_ptr<ie::TensorIterator>& tensorIterator) {
+bool isIterable(const ie::DataPtr& data, const std::shared_ptr<ngraph::opset4::TensorIterator>& tensorIterator) {
     const auto& bodyInputs = tensorIterator->body.inputs;
     const auto& bodyOutputs = tensorIterator->body.outputs;
 
@@ -73,14 +83,112 @@ bool isFakeHolder(const ie::DataPtr& data) {
     return data->getPrecision() == ie::Precision::UNSPECIFIED;
 }
 
+std::vector<PortMap> getInputPortMap (const std::vector<ngraph::op::util::InputDescriptionPtr>& descriptions) {
+    std::vector<PortMap> result;
+    result.reserve(descriptions.size());
+    for (const auto& desc : descriptions) {
+        auto body_input_index = desc->m_body_parameter_index;
+
+        if (const auto slice_desc = std::dynamic_pointer_cast<ngraph::op::util::SubGraphOp::SliceInputDescription>(desc)) {
+            result.push_back(PortMap{
+                static_cast<int>(slice_desc->m_input_index), static_cast<int>(body_input_index),
+                static_cast<int>(slice_desc->m_axis), static_cast<int>(slice_desc->m_stride),
+                static_cast<int>(slice_desc->m_start), static_cast<int>(slice_desc->m_end),
+                static_cast<int>(slice_desc->m_part_size)});
+        } else if (const auto merge_desc = std::dynamic_pointer_cast<ngraph::op::util::SubGraphOp::MergedInputDescription>(desc)) {
+            result.push_back(PortMap {
+                static_cast<int>(merge_desc->m_input_index), static_cast<int>(body_input_index), -1, 1, 0, -1, 1});
+        } else if (const auto inv_desc = std::dynamic_pointer_cast<ngraph::op::util::SubGraphOp::InvariantInputDescription>(desc)) {
+            result.push_back(PortMap {
+                    static_cast<int>(inv_desc->m_input_index), static_cast<int>(body_input_index), -1, 1, 0, -1, 1});
+        } else {
+            VPU_THROW_UNLESS(false, "Incorrect type of the input description.");
+        }
+    }
+    return result;
+}
+
+std::vector<PortMap> getOutputPortMap (const std::vector<ngraph::op::util::OutputDescriptionPtr>& descriptions) {
+    std::vector<PortMap> result;
+    result.reserve(descriptions.size());
+        for (const auto& desc : descriptions) {
+        auto body_output_idx = desc->m_body_value_index;
+
+        std::string type_name = desc->get_type_info().name;
+        if (type_name == "ConcatOutputDescription") {
+            auto output_desc = ::ngraph::as_type_ptr<ngraph::op::util::SubGraphOp::ConcatOutputDescription>(desc);
+            IE_ASSERT(output_desc != nullptr);
+
+            result.push_back(PortMap {
+                static_cast<int>(output_desc->m_output_index), static_cast<int>(body_output_idx),
+                static_cast<int>(output_desc->m_axis), static_cast<int>(output_desc->m_stride),
+                static_cast<int>(output_desc->m_start), static_cast<int>(output_desc->m_end),
+                static_cast<int>(output_desc->m_part_size)});
+        } else if (type_name == "BodyOutputDescription") {
+            auto output_desc = ::ngraph::as_type_ptr<ngraph::op::util::SubGraphOp::BodyOutputDescription>(desc);
+            IE_ASSERT(output_desc != nullptr);
+
+            result.push_back(PortMap {
+                static_cast<int>(output_desc->m_output_index), static_cast<int>(body_output_idx), -1, 1, 0, -1, 1});
+        } else {
+            VPU_THROW_UNLESS(false, "Incorrect type of the input description.");
+        }
+    }
+    return result;
+}
+
+std::vector<PortMap> getBackEdges (const std::vector<ngraph::op::util::InputDescriptionPtr>& descriptions) {
+    std::vector<PortMap> result;
+    result.reserve(descriptions.size());
+    for (const auto& desc : descriptions) {
+        auto body_input_index = desc->m_body_parameter_index;
+        if (const auto merge_desc = std::dynamic_pointer_cast<ngraph::op::util::SubGraphOp::MergedInputDescription>(desc)) {
+            auto body_output_idx = merge_desc->m_body_value_index;
+
+            result.push_back(PortMap {
+                static_cast<int>(body_output_idx), static_cast<int>(body_input_index), -1, 1, 0, -1, 1});
+        }
+    }
+    return result;
+}
+
 }  // namespace
 
-void FrontEnd::parseTensorIterator(const Model& model, const ie::CNNLayerPtr& layer, const DataVector& inputs, const DataVector& outputs) {
+void FrontEnd::parseTensorIterator(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) {
     IE_ASSERT(!inputs.empty());
     IE_ASSERT(!outputs.empty());
+    // auto tensorIterator = std::dynamic_pointer_cast<ie::TensorIterator>(ie::CNNLayerPtr());
+    // IE_ASSERT(tensorIterator != nullptr);
 
-    auto tensorIterator = std::dynamic_pointer_cast<ie::TensorIterator>(layer);
-    IE_ASSERT(tensorIterator != nullptr);
+
+    auto tensorIterator = ngraph::as_type_ptr<ngraph::opset4::TensorIterator>(node);
+    auto subgraph = ngraph::as_type_ptr<ngraph::op::util::SubGraphOp>(node);
+    auto body = tensorIterator-> get_body();
+    auto bodyParam = body->get_parameters();
+    auto bodyResults = body->get_results();
+    auto bodyAsCNNNetwork = ie::CNNNetwork(body);
+    auto bodyInputsInfo = bodyAsCNNNetwork.getInputsInfo();
+    auto bodyOutputsInfo = bodyAsCNNNetwork.getOutputsInfo();
+    auto bodyInputDataVector = [&bodyInputsInfo] {
+         std::vector<ie::DataPtr> result;
+         result.reserve(bodyInputsInfo.size());
+         for (const auto& inputInfo : bodyInputsInfo) {
+             result.push_back(inputInfo.second->getInputData());
+         }
+         return result;
+    }();
+    auto bodyOutputDataVector = [&bodyOutputsInfo] {
+         std::vector<ie::DataPtr> result;
+         result.reserve(bodyOutputsInfo.size());
+         for (const auto& inputInfo : bodyOutputsInfo) {
+             result.push_back(inputInfo.second);
+         }
+         return result;
+    }();
+
+
+    IE_ASSERT(bodyParam.size() == bodyInputsInfo.size());
+    IE_ASSERT(bodyResults.size() == bodyResults.size());
 
     auto createDescriptor = [&](const ie::TensorDesc& original) {
         auto vpuDescriptor = DataDesc{original};
@@ -92,6 +200,7 @@ void FrontEnd::parseTensorIterator(const Model& model, const ie::CNNLayerPtr& la
     };
 
     auto createData = [&](const ie::DataPtr& original) {
+        
         return model->addNewData(original->getName(), createDescriptor(original->getTensorDesc()));;
     };
 
@@ -107,7 +216,8 @@ void FrontEnd::parseTensorIterator(const Model& model, const ie::CNNLayerPtr& la
 
     auto findTIInputsDataByBodyData = [&](const ie::DataPtr& bodyData) -> std::vector<ie::DataPtr> {
         std::vector<ie::DataPtr> tensorIteratorInputs;
-        for (const auto& rule : tensorIterator->input_port_map) {
+        auto inputPortMap = getInputPortMap(tensorIterator->get_input_descriptions());
+        for (const auto& rule : inputPortMap) {
             if (tensorIterator->body.inputs[rule.to] == bodyData) {
                 tensorIteratorInputs.push_back(tensorIterator->insData[rule.from].lock());
             }
@@ -183,12 +293,14 @@ void FrontEnd::parseTensorIterator(const Model& model, const ie::CNNLayerPtr& la
         // back-edge connection is defined as a connection between Tensor Iterator's body output object and body input object
         // this way there can be different back-edge connections to the same Tensor Iterator's input object
         // to correctly handle this case we have to parse body inputs, not Tensor Iterator's inputs
-        const auto& bodyInputs = tensorIterator->body.inputs;
-        VPU_THROW_UNLESS(!bodyInputs.empty(), "If there is no an input for Tensor Iterator's body, so there is no iteration in tensor iterator");
-
-        for (std::size_t bodyInputPort = 0; bodyInputPort < bodyInputs.size(); ++bodyInputPort) {
-            const auto& bodyInput = bodyInputs[bodyInputPort];
-            const bool isLast = bodyInputPort == (bodyInputs.size() - 1);
+        // const auto& bodyInputs = tensorIterator->body.inputs;
+        VPU_THROW_UNLESS(!bodyInputsInfo.empty(), "If there is no an input for Tensor Iterator's body, so there is no iteration in tensor iterator");
+        std::size_t bodyInputPort = 0;
+        // for (std::size_t bodyInputPort = 0; bodyInputPort < bodyInputs.size(); ++bodyInputPort) {
+        for (auto bodyInputInfo : bodyInputsInfo) {    
+            const auto& bodyInput = bodyInputInfo.second->getInputData();
+            const bool isLast = bodyInputPort == (bodyInputsInfo.size() - 1);
+            bodyInputPort++;
             VPU_THROW_UNLESS(!isFakeHolder(bodyInput) || isLast , "There can be only one fake holder and it can be only the last Tensor Iterator body input");
             if (isFakeHolder(bodyInput)) {
                 // fake holder keeps strong references on const data objects that are not presented in Tensor Iterator's body input vector

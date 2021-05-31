@@ -119,14 +119,14 @@ protected:
 Stage StageBuilder::addCropStage(
         const Model& model,
         const std::string& name,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const Data& input,
         const Data& output,
         const DimValues& offset) {
     auto stage = model->addNewStage<CropStage>(
         name,
         StageType::Crop,
-        layer,
+        node,
         {input},
         {output});
 
@@ -137,9 +137,10 @@ Stage StageBuilder::addCropStage(
 
 void FrontEnd::parseCrop(
         const Model& model,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const DataVector& inputs,
         const DataVector& outputs) const {
+    const auto& crop = ngraph::as_type_ptr<ngraph::opset4::StridedSlice>;
     VPU_THROW_UNLESS(inputs.size() == 1 || inputs.size() == 2,
                      "Crop: number of inputs must be 1 or 2, actually provided: %u", inputs.size());
     VPU_THROW_UNLESS(outputs.size() == 1,

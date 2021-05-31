@@ -21,11 +21,6 @@
 
 #include <legacy/convert_function_to_cnn_network.hpp>
 #include <ngraph/pass/manager.hpp>
-#include <ngraph/opsets/opset1.hpp>
-#include <ngraph/opsets/opset3.hpp>
-#include <ngraph/opsets/opset4.hpp>
-#include <ngraph/opsets/opset5.hpp>
-#include <ngraph/opsets/opset6.hpp>
 #include <ngraph/pass/constant_folding.hpp>
 #include <transformations/opset_conversions/convert_opset3_to_opset2.hpp>
 #include <transformations/opset_conversions/convert_opset2_to_opset1.hpp>
@@ -83,6 +78,7 @@ FrontEnd::FrontEnd(StageBuilder::Ptr stageBuilder, const ie::ICore* core)
         {"ScaleShift",                                         LAYER_PARSER(parseScale)},
         {"Deconvolution",                                      LAYER_PARSER(parseDeconvolution)},
         {"Power",                                              LAYER_PARSER(parsePower)},
+        {"Sqrt",                                               LAYER_PARSER(parseSqrt)},
         {"Copy",                                               LAYER_PARSER(parseCopy)},
         {"ELU",                                                LAYER_PARSER(parseELU)},
         // Flatten, Squeeze and Unsqueeze are represented as Reshape in VPU model
@@ -95,7 +91,7 @@ FrontEnd::FrontEnd(StageBuilder::Ptr stageBuilder, const ie::ICore* core)
         {"Normalize",                                          LAYER_PARSER(parseNormalize)},
         {"PriorBox",                                           LAYER_PARSER(parsePriorBox)},
         {"PriorBoxClustered",                                  LAYER_PARSER(parsePriorBoxClustered)},
-        {"Permute",                                            LAYER_PARSER(parsePermute)},
+        {"Transpose",                                          LAYER_PARSER(parsePermute)},
         {"DetectionOutput",                                    LAYER_PARSER(parseDetectionOutput)},
         {"RegionYolo",                                         LAYER_PARSER(parseRegionYolo)},
         {"ReorgYolo",                                          LAYER_PARSER(parseReorgYolo)},
@@ -281,17 +277,17 @@ std::set<std::string> FrontEnd::checkSupportedLayers(const ie::CNNNetwork& netwo
 
     std::set<std::string> supportedLayers;
 
-    const auto onSupportedLayer = [&supportedLayers](const ie::CNNLayerPtr& layer) {
-        supportedLayers.insert(layer->name);
+    const auto onSupportedLayer = [&supportedLayers](const NodePtr& node) {
+        supportedLayers.insert(node->get_name());
     };
 
     const auto onUnsupportedLayer = [this](
         const Model& model,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const DataVector& inputs,
         const DataVector& outputs,
         const std::string& /*extraMsg*/) {
-        _stageBuilder->addNoneStage(model, layer->name, layer, inputs, outputs);
+        _stageBuilder->addNoneStage(model, node->get_name(), node, inputs, outputs);
     };
 
     runCommonPasses(cloneNetwork(network), onUnsupportedLayer, onSupportedLayer);
@@ -305,57 +301,21 @@ std::atomic<int> g_counter(0);
 
 }  // namespace
 
-CustomLayer::Ptr FrontEnd::getSuitableCustomLayer(const std::vector<CustomLayer::Ptr>& customLayers,
-                                                  const ie::CNNLayerPtr& cnnLayer) {
-    const auto& env = CompileEnv::get();
-    env.log->trace("Check for suitable custom implementation for layer %s:%s",
-                   cnnLayer->name, cnnLayer->type);
-    VPU_LOGGER_SECTION(env.log);
+std::vector<vpu::CustomLayer::Ptr> getSuitableCustomLayers(const std::vector<vpu::CustomLayer::Ptr>& customLayers,
+                                                           const std::shared_ptr<ngraph::Node>& node) {
+    const auto isSuitableLayer = [&](const vpu::CustomLayer::Ptr& customLayer) {
+        paramVisitor visitor;
+        node->visit_attributes(visitor);
+        auto layerParams = visitor.GetMap();
 
-    const auto cnnInputs = [&] {
-        auto inputs = SmallVector<CustomDataFormat>{};
-        inputs.reserve(cnnLayer->insData.size());
-        for (const auto& input : cnnLayer->insData) {
-            const auto layout = input.lock()->getLayout();
-            const auto format = CustomLayer::formatFromLayout(layout);
-            inputs.push_back(format);
-        }
-        return inputs;
-    }();
-
-    const auto cnnOutputs = [&] {
-        auto outputs = SmallVector<CustomDataFormat>{};
-        outputs.reserve(cnnLayer->outData.size());
-        for (const auto& output : cnnLayer->outData) {
-            const auto layout = output->getLayout();
-            const auto format = CustomLayer::formatFromLayout(layout);
-            outputs.push_back(format);
-        }
-        return outputs;
-    }();
-
-    const auto isSuitableLayer = [&env, &cnnLayer](const CustomLayer::Ptr& customLayer) {
-        env.log->trace("Check next custom layer : %v", customLayer->layerName());
-        VPU_LOGGER_SECTION(env.log);
-
-        if (!customLayer->meetsWhereRestrictions(cnnLayer->params)) {
-            env.log->trace("Where restrictions are not met");
+        if (!customLayer->meetsWhereRestrictions(layerParams)) {
             return false;
         }
 
+        SizeRuleValidator validator{customLayer, layerParams};
         for (const auto& kernel : customLayer->kernels()) {
-            const auto& gws = kernel.globalGridSizeRules();
-            const auto& lws = kernel.localGridSizeRules();
-
-            const auto validSizeRule = [&](const std::string& rule) {
-                return CustomLayer::isLegalSizeRule(rule, cnnLayer->params);
-            };
-
-            const auto validGridSizes = std::all_of(begin(gws), end(gws), validSizeRule) &&
-                                        std::all_of(begin(lws), end(lws), validSizeRule);
-
-            if (!validGridSizes) {
-                env.log->trace("Work group grid sizes are not valid");
+            kernel->accept(validator);
+            if (!validator.result()) {
                 return false;
             }
         }
@@ -363,81 +323,43 @@ CustomLayer::Ptr FrontEnd::getSuitableCustomLayer(const std::vector<CustomLayer:
         return true;
     };
 
-    auto suitableCustomLayers = SmallVector<CustomLayer::Ptr>{};
+    auto suitableCustomLayers = std::vector<vpu::CustomLayer::Ptr>{};
 
-    std::copy_if(begin(customLayers), end(customLayers),
-        back_inserter(suitableCustomLayers), isSuitableLayer);
+    std::copy_if(begin(customLayers), end(customLayers), back_inserter(suitableCustomLayers), isSuitableLayer);
 
-    if (suitableCustomLayers.empty()) {
-      return nullptr;
-    }
-
-    const auto inputsLayoutMatch = [&](const SmallVector<CustomDataFormat>& cnnEdges,
-                                       const std::map<int, CustomDataFormat>& clEdges) {
-        for (const auto clEdge : clEdges) {
-            const auto port = clEdge.first;
-            VPU_THROW_UNLESS(port < cnnEdges.size(),
-                "Can't bind custom layer edge with port '%s' to CNNNetwork layer", port);
-
-            const auto clFormat = clEdge.second;
-            const auto cnnFormat = cnnEdges[port];
-            if (cnnFormat != clFormat &&
-                cnnFormat != CustomDataFormat::Any &&
-                clFormat != CustomDataFormat::Any) {
-                return false;
-            }
-        }
-        return true;
-    };
-
-
-    for (const auto& customLayer : suitableCustomLayers) {
-        const auto clInputs = customLayer->inputs();
-
-        if (inputsLayoutMatch(cnnInputs, clInputs)) {
-            env.log->trace("Found suitable '%s' custom layer", customLayer->layerName());
-            return customLayer;
-        }
-    }
-
-    const auto firstGoodLayer = suitableCustomLayers.front();
-    env.log->trace("Found suitable custom layer '%s', but input layouts "
-                   "have not matched with what CNNNetwork expected",
-                   firstGoodLayer->layerName());
-    return firstGoodLayer;
+    return suitableCustomLayers;
 }
 
-
-void FrontEnd::parseLayer(const Model& model, const ie::CNNLayerPtr& layer, const DataVector& inputs, const DataVector& outputs) {
-    parseLayer(model, layer, inputs, outputs,
-        [this](const Model& model, const ie::CNNLayerPtr& layer, const DataVector& inputs, const DataVector& outputs,
+void FrontEnd::parseLayer(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) {
+    parseLayer(model, node, inputs, outputs,
+        [this](const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs,
                             const std::string& extraMessage)
-        { defaultOnUnsupportedLayerCallback(model, layer, inputs, outputs, extraMessage); });
+        { defaultOnUnsupportedLayerCallback(model, node, inputs, outputs, extraMessage); });
 }
 
-void FrontEnd::parseLayer(const Model& model, const ie::CNNLayerPtr& layer, const DataVector& inputs, const DataVector& outputs,
-                          const FrontEnd::UnsupportedLayerCallback& onUnsupported, const FrontEnd::SupportedLayerCallback& onSupported) {
-    const auto customLayer = _customLayers.find(layer->type);
-    const bool isCustomLayer = customLayer != _customLayers.end() && getSuitableCustomLayer(customLayer->second, layer);
+void FrontEnd::parseLayer(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs,
+                          const FrontEnd::UnsupportedNodeCallback& onUnsupported, const FrontEnd::SupportedNodeCallback& onSupported) {
+    const auto customLayer = _customLayers.find(node->get_type_name());
+    const bool isCustomLayer = customLayer != _customLayers.end() && getSuitableCustomLayer(customLayer->second, node);
 
-    const auto& type = isCustomLayer ? "Custom" : layer->type;
+    const auto& type = isCustomLayer ? "Custom" : node->get_type_name();
     if (parsers.count(type) == 0) {
         if (onUnsupported) {
-            onUnsupported(model, layer, inputs, outputs, formatString("unsupported layer type \"%v\"", type));
+            onUnsupported(model, node, inputs, outputs, formatString("unsupported layer type \"%v\"", type));
         }
         return;
     }
 
     try {
-        parsers.at(type)(model, layer, inputs, outputs);
+        parsers.at(type)(model, node, inputs, outputs);
         if (onSupported) {
-            onSupported(layer);
+            onSupported(node);
         }
     } catch (const details::UnsupportedLayerException&) {
         throw;
     } catch (const std::exception& error) {
         if (onUnsupported) {
-            onUnsupported(model, layer, inputs, outputs, error.what());
+            onUnsupported(model, node, inputs, outputs, error.what());
         }
     }
 }
@@ -478,21 +400,21 @@ void FrontEnd::processTrivialCases(const Model& model) {
     }
 }
 
-void FrontEnd::defaultOnUnsupportedLayerCallback(const Model& model, const ie::CNNLayerPtr& layer, const DataVector& inputs, const DataVector& outputs,
+void FrontEnd::defaultOnUnsupportedLayerCallback(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs,
                                                  const std::string& extraMessage) {
     const auto& env = CompileEnv::get();
-    VPU_THROW_UNSUPPORTED_UNLESS(env.config.ignoreUnknownLayers, "Failed to compile layer \"%v\": %v", layer->name, extraMessage);
-    _stageBuilder->addNoneStage(model, layer->name, layer, inputs, outputs);
+    VPU_THROW_UNSUPPORTED_UNLESS(env.config.ignoreUnknownLayers, "Failed to compile layer \"%v\": %v", node->get_name(), extraMessage);
+    _stageBuilder->addNoneStage(model, node->get_name(), node, inputs, outputs);
 }
 
 ModelPtr FrontEnd::runCommonPasses(const ie::CNNNetwork& network) {
     return runCommonPasses(cloneNetwork(network),
-        [this](const Model& model, const ie::CNNLayerPtr& layer, const DataVector& inputs, const DataVector& outputs, const std::string& extraMessage) {
-            defaultOnUnsupportedLayerCallback(model, layer, inputs, outputs, extraMessage);});
+        [this](const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs, const std::string& extraMessage) {
+            defaultOnUnsupportedLayerCallback(model, node, inputs, outputs, extraMessage);});
 }
 
 ModelPtr FrontEnd::runCommonPasses(ie::CNNNetwork network,
-    const UnsupportedLayerCallback& unsupportedLayer, const SupportedLayerCallback& supportedLayer) {
+    const UnsupportedNodeCallback& unsupportedLayer, const SupportedNodeCallback& supportedLayer) {
     const auto& env = CompileEnv::get();
 
     //
@@ -563,7 +485,7 @@ ModelPtr FrontEnd::runCommonPasses(ie::CNNNetwork network,
                                             InferenceEngine::details::convertPrecision(precision.first),
                                             InferenceEngine::details::convertPrecision(precision.second));
         }
-        removeConstLayers(network);
+        // removeConstLayers(network);
     }
 
     //
@@ -599,24 +521,24 @@ ModelPtr FrontEnd::runCommonPasses(ie::CNNNetwork network,
     // Parse original layers
     //
 
-    env.log->trace("Parse original layers");
+    env.log->trace("Parse original nodes");
 
     DataVector inputs, outputs;
-    for (const auto& layer : origLayers()) {
+    for (const auto& node : origNodes()) {
         VPU_LOGGER_SECTION(env.log);
 
-        env.log->trace("Try to parse layer %s:%s", layer->name, layer->type);
+        env.log->trace("Try to parse node %s:%s", node->get_name(), node->get_type_name());
         VPU_LOGGER_SECTION(env.log);
 
-        getInputAndOutputData(model, layer, inputs, outputs);
+        getInputAndOutputData(model, node, inputs, outputs);
 
-        if (env.config.skipAllLayers() || env.config.skipLayerType(layer->type)) {
-            _stageBuilder->addNoneStage(model, layer->name, layer, inputs, outputs);
-            supportedLayer(layer);
+        if (env.config.skipAllLayers() || env.config.skipLayerType(node->get_type_name())) {
+            _stageBuilder->addNoneStage(model, node->get_name(), node, inputs, outputs);
+            supportedLayer(node);
             continue;
         }
 
-        parseLayer(model, layer, inputs, outputs, unsupportedLayer, supportedLayer);
+        parseLayer(model, node, inputs, outputs, unsupportedLayer, supportedLayer);
     }
 
     //
@@ -651,16 +573,16 @@ void FrontEnd::bindData(const Data& data, const ie::DataPtr& ieData) {
 
 void FrontEnd::getInputAndOutputData(
         const Model& model,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         DataVector& inputs,
         DataVector& outputs) {
-    IE_ASSERT(layer != nullptr);
-
-    inputs.resize(layer->insData.size());
-    for (size_t i = 0; i < layer->insData.size(); ++i) {
-        const auto layerInput = layer->insData[i].lock();
-        IE_ASSERT(layerInput != nullptr);
-
+    IE_ASSERT(node != nullptr);
+    
+    inputs.resize(node->get_input_size());
+    for (size_t i = 0; i < node->get_input_size(); ++i) {
+        const auto nodeInput = node->get_input_node_ptr(i);
+        IE_ASSERT(nodeInput != nullptr);
+        node->get_input_node_shared_ptr(i)->
         inputs[i] = getVpuData(layerInput);
         IE_ASSERT(inputs[i] != nullptr);
     }
@@ -696,31 +618,51 @@ void FrontEnd::getInputAndOutputData(
     }
 }
 
-std::tuple<Data, Data> FrontEnd::getWeightsAndBiases(const Model& model, const ie::CNNLayerPtr& layer) const {
-    const auto baseLayer = std::dynamic_pointer_cast<ie::WeightableLayer>(layer);
-    IE_ASSERT(baseLayer != nullptr);
-
-    const auto origWeights = baseLayer->_weights;
-    VPU_THROW_UNLESS(origWeights != nullptr, "Layer %s has no weights", layer->name);
+std::tuple<Data, Data> FrontEnd::getWeightsAndBiases(const Model& model, const std::string nodeName,
+                                                     const NodePtr& weightsNode, const NodePtr& biasesNode = nullptr) const {
+    auto constant = ngraph::as_type_ptr<ngraph::opset4::Constant>(weightsNode);
+    VPU_THROW_UNLESS(constant != nullptr, "Can't get weights. Node with name {} has no constant input", nodeName);
+    
+    const auto origWeights = shareWeights(constant);
+    VPU_THROW_UNLESS(origWeights != nullptr, "Can't get weights. Node with name {} has no constant input", nodeName);
 
     const auto weights = model->addConstData(
-        layer->name + "@weights",
+        nodeName + "@weights",
         DataDesc({origWeights->size()}),
         ieBlobContent(origWeights));
 
-    const auto origBiases = baseLayer->_biases;
-
     Data biases;
-    if (origBiases == nullptr) {
-        biases = model->addFakeData();
-    } else {
+    if (biasesNode != nullptr) {
+        auto constBiasesNode = ngraph::as_type_ptr<ngraph::opset4::Constant>(biasesNode);
+        VPU_THROW_UNLESS(constBiasesNode != nullptr, "Can't get biases. Node with name {} has no constant input", nodeName);
+
+        const auto origBiases = shareWeights(constBiasesNode);
         biases = model->addConstData(
-            layer->name + "@biases",
+            nodeName + "@biases",
             DataDesc({origBiases->size()}),
             ieBlobContent(origBiases));
+    } else {
+        biases = model->addFakeData();
     }
 
     return std::make_tuple(weights, biases);
+}
+ie::Blob::Ptr shareWeights(const NodePtr& constLayer)  {
+    if (!constLayer) IE_THROW() << "Cannot share weights! Constant operation is empty!";
+    auto dataPrecision = ie::details::convertPrecision(constLayer->get_element_type());
+
+    size_t shapeSize = ngraph::shape_size(constLayer->get_shape());
+    size_t byte_size{8};
+    if (dataPrecision == ie::Precision::BIN) {
+        shapeSize = (shapeSize + (byte_size - 1)) / byte_size;
+    }
+
+    ie::TensorDesc td(dataPrecision, {shapeSize}, ie::Layout::C);
+
+    auto blob = make_blob_with_precision(td, std::make_shared<ie::details::ConstAllocatorWrapper>(constLayer));
+    blob->allocate();
+
+    return blob;
 }
 
 }  // namespace vpu

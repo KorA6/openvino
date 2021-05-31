@@ -97,7 +97,7 @@ private:
 
 }  // namespace
 
-void FrontEnd::parseROIFeatureExtractor(const Model& model, const ie::CNNLayerPtr& layer, const DataVector& inputs, const DataVector& outputs) const {
+void FrontEnd::parseROIFeatureExtractor(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const {
     IE_ASSERT(inputs.size() > 1);
     IE_ASSERT(outputs.size() == 1 || outputs.size() == 2);
     auto levels_num = inputs.size() - 1;

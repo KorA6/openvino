@@ -17,6 +17,8 @@
 #include <vpu/compile_env.hpp>
 #include <vpu/stages/stub_stage.hpp>
 
+#include <ngraph/ops.hpp>
+
 namespace vpu {
 
 static
@@ -159,14 +161,13 @@ bool canTryHW(const ie::PoolingLayer::PoolType poolType,
 
 static
 void parsePool2D(const     Model      & model,
-                 const ie::CNNLayerPtr& layer,
+                 const     NodePtr    & node,
                  const     Data       & input,
                  const     Data       & output) {
     //
     // Extract parameters
     //
-
-    auto poolLayer = std::dynamic_pointer_cast<ie::PoolingLayer>(layer);
+    auto poolNode = ngraph::as_type_ptr<ngraph::op::AvgPool>(node);
     VPU_THROW_UNLESS(poolLayer != nullptr, "failed dynamic cast to PoolingLayer");
 
     int kernelSizeX = poolLayer->_kernel_x;
@@ -529,9 +530,10 @@ void parsePoolND(const     Model      & model,
 //----------------------------------------------------------------------
 
 void FrontEnd::parsePooling(const     Model      & model,
-                            const ie::CNNLayerPtr& layer,
+                            const     NodePtr    & node,
                             const     DataVector & inputs,
                             const     DataVector & outputs) const {
+    auto pool = ngraph::as_type_ptr<ngraph::opset4::AvgPool>(node);
     VPU_THROW_UNLESS(inputs.size() == 1, "number of inputs must be equal to 1, but it equals to %lu", inputs.size());
     VPU_THROW_UNLESS(outputs.size() == 1, "number of outputs must be equal to 1, but it equals to %lu", outputs.size());
 
@@ -552,9 +554,9 @@ void FrontEnd::parsePooling(const     Model      & model,
                 input->desc().numDims() == 4;  // CHW or NCHW, but not NCDWH or 6D or ...
 
     if (is2D) {
-        parsePool2D(model, layer, input, output);
+        parsePool2D(model, node, input, output);
     } else {
-        parsePoolND(model, layer, input, output);
+        parsePoolND(model, node, input, output);
     }
 }
 
@@ -563,7 +565,7 @@ void FrontEnd::parsePooling(const     Model      & model,
 Stage StageBuilder::addPoolingStage(
         const Model& model,
         const std::string& name,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const Data& input,
         const Data& output,
         const ie::PoolingLayer::PoolType& poolType) {
@@ -593,7 +595,7 @@ Stage StageBuilder::addPoolingStage(
     //
     auto stage = model->addNewStage<StubStage>(name,
                                                stageType,
-                                               layer,
+                                               node,
                                                {input},
                                                {output});
     return stage;

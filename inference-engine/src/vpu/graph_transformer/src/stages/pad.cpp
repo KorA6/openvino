@@ -86,23 +86,24 @@ private:
 
 }  // namespace
 
-void FrontEnd::parsePad(const Model& model, const ie::CNNLayerPtr& _layer, const DataVector& inputs, const DataVector& outputs) const {
+void FrontEnd::parsePad(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const {
+    const auto& pad = ngraph::as_type_ptr<ngraph::op::v1::Pad>(node);
+    IE_ASSERT(pad != nullptr);
     IE_ASSERT(inputs.size() == 1);
     IE_ASSERT(outputs.size() == 1);
 
-    auto layer = std::dynamic_pointer_cast<ie::PadLayer>(_layer);
-    IE_ASSERT(layer != nullptr);
-
     const auto ndims = inputs[0]->desc().dimsOrder().numDims();
-    VPU_THROW_UNLESS(ndims == 3 || ndims == 4, "Layer %s support only 3D and 4D input, but %dD provided", layer->name, ndims);
+    VPU_THROW_UNLESS(ndims == 3 || ndims == 4, "Layer %s support only 3D and 4D input, but %dD provided", pad->get_name(), ndims);
 
-    VPU_THROW_UNLESS(layer->pads_begin.size() <= 4, "Layer %s support pads_begin size less than or equal 4, but %d provided",
+    VPU_THROW_UNLESS(pad->get_pa  pads_begin.size() <= 4, "Layer %s support pads_begin size less than or equal 4, but %d provided",
                      layer->name, layer->pads_begin.size());
     VPU_THROW_UNLESS(layer->pads_end.size() <= 4, "Layer %s support pads_end size less than or equal 4, but %d provided",
             layer->name, layer->pads_end.size());
 
     DimsOrder dimsOrder = inputs[0]->desc().dimsOrder();
     DimValues pads_begin;
+    ngraph::CoordinateDiff;
+    auto asd = pad->get_pads_begin();
     pads_begin.set(Dim::W, dimsOrder.hasDim(Dim::W) ? layer->pads_begin[dimToIeInd(Dim::W, ndims)] : 0);
     pads_begin.set(Dim::H, dimsOrder.hasDim(Dim::H) ? layer->pads_begin[dimToIeInd(Dim::H, ndims)] : 0);
     pads_begin.set(Dim::C, dimsOrder.hasDim(Dim::C) ? layer->pads_begin[dimToIeInd(Dim::C, ndims)] : 0);
@@ -129,7 +130,7 @@ void FrontEnd::parsePad(const Model& model, const ie::CNNLayerPtr& _layer, const
 Stage StageBuilder::addPadStage(
         const Model& model,
         const std::string& name,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         PadMode padMode,
         float pad_value,
         const DimValues& pads_begin,
@@ -139,7 +140,7 @@ Stage StageBuilder::addPadStage(
     auto stage = model->addNewStage<PadStage>(
         name,
         StageType::Pad,
-        layer,
+        node,
         {input},
         {output});
 

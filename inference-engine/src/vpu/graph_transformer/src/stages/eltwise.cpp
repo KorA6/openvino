@@ -220,32 +220,32 @@ private:
 
 }  // namespace
 
-void FrontEnd::parseEltwise(const Model& model, const ie::CNNLayerPtr& _layer, const DataVector& inputs, const DataVector& outputs) const {
-    auto layer = std::dynamic_pointer_cast<ie::EltwiseLayer>(_layer);
-    IE_ASSERT(layer != nullptr);
+void FrontEnd::parseEltwise(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const {
+    // is it eltwise?
+    IE_ASSERT(node != nullptr);
 
     IE_ASSERT(outputs.size() == 1);
 
     auto stageType = StageType::None;
     auto subCoefficient = 1;
 
-    if (layer->_operation == ie::EltwiseLayer::eOperation::Sub) {
+    if (const auto& sub = ngraph::as_type_ptr<ngraph::op::v1::Subtract>(node)) {
         if (inputs.size() != 2) {
-            VPU_THROW_EXCEPTION << "Eltwise operation: " << layer->_operation << " with multiple inputs is not supported";
+            VPU_THROW_EXCEPTION << "Eltwise operation: " << sub->get_type_name() << " with multiple inputs is not supported";
         }
         stageType = StageType::Sum;
         subCoefficient = -1;
-    } else if (layer->_operation == ie::EltwiseLayer::eOperation::Mean) {
+    } else if (const auto& mean = ngraph::as_type_ptr<ngraph::op::v1::ReduceMean>(node)) {
         if (inputs.size() != 2) {
-            VPU_THROW_EXCEPTION << "Eltwise operation: " << layer->_operation << " with multiple inputs is not supported";
+            VPU_THROW_EXCEPTION << "Eltwise operation: " << mean->get_type_name() << " with multiple inputs is not supported";
         }
         stageType = StageType::Sum;
     } else {
-        if (eltwise_map.find(layer->_operation) != eltwise_map.end()) {
-            stageType = eltwise_map.at(layer->_operation)(layer->_operation, inputs.size());
-        } else {
-            VPU_THROW_EXCEPTION << "Eltwise operation: " << layer->_operation << " is not supported";
-        }
+        // if (eltwise_map.find(layer->_operation) != eltwise_map.end()) {     // need to rework
+        //     stageType = eltwise_map.at(layer->_operation)(layer->_operation, inputs.size());
+        // } else {
+        //     VPU_THROW_EXCEPTION << "Eltwise operation: " << layer->_operation << " is not supported";
+        // }
     }
 
     if (stageType != StageType::Sum && !layer->coeff.empty()) {
@@ -327,21 +327,21 @@ void FrontEnd::parseEltwise(const Model& model, const ie::CNNLayerPtr& _layer, c
     }
 }
 
-void FrontEnd::parseSelect(const Model& model, const ie::CNNLayerPtr& _layer, const DataVector& inputs, const DataVector& outputs) const {
-    auto layer = std::dynamic_pointer_cast<ie::SelectLayer>(_layer);
-    IE_ASSERT(layer != nullptr);
+void FrontEnd::parseSelect(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const {
+    auto select = ngraph::as_type_ptr<ngraph::opset4::Select>(node); 
+    VPU_THROW_UNLESS(select != nullptr, "Can't parse node with name %s and type %s. Node is nullptr", node->get_friendly_name(), node->get_type_name());
 
     if (inputs.size() != 3) {
         VPU_THROW_EXCEPTION << "Select supports only three inputs";
     }
 
-    auto stage = model->addNewStage<EltwiseStage>(layer->name, StageType::Select, layer, inputs, outputs);
+    auto stage = model->addNewStage<EltwiseStage>(select->get_name(), StageType::Select, select, inputs, outputs);
 }
 
 Stage StageBuilder::addSumStage(
         const Model& model,
         const std::string& name,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const Data& input0,
         const Data& input1,
         const Data& output) {
@@ -349,7 +349,7 @@ Stage StageBuilder::addSumStage(
     return model->addNewStage<EltwiseStage>(
         name,
         StageType::Sum,
-        layer,
+        node,
         {input0, input1, fakeInput2},
         {output});
 }
@@ -357,7 +357,7 @@ Stage StageBuilder::addSumStage(
 Stage StageBuilder::addProdStage(
         const Model& model,
         const std::string& name,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const Data& input0,
         const Data& input1,
         const Data& output) {
@@ -365,7 +365,7 @@ Stage StageBuilder::addProdStage(
     return model->addNewStage<EltwiseStage>(
             name,
             StageType::Prod,
-            layer,
+            node,
             {input0, input1, fakeInput2},
             {output});
 }
@@ -373,7 +373,7 @@ Stage StageBuilder::addProdStage(
 Stage StageBuilder::addMaxStage(
         const Model& model,
         const std::string& name,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const Data& input0,
         const Data& input1,
         const Data& output) {
@@ -381,7 +381,7 @@ Stage StageBuilder::addMaxStage(
     return model->addNewStage<EltwiseStage>(
         name,
         StageType::Max,
-        layer,
+        node,
         {input0, input1, fakeInput2},
         {output});
 }

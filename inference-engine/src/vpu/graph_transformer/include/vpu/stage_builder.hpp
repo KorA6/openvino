@@ -29,7 +29,7 @@ public:
     Stage addSumStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input0,
             const Data& input1,
             const Data& output);
@@ -37,7 +37,7 @@ public:
     Stage addMaxStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input0,
             const Data& input1,
             const Data& output);
@@ -45,7 +45,7 @@ public:
     Stage addBiasStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& biases,
             const Data& output);
@@ -53,7 +53,7 @@ public:
     Stage addScaleStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& scales,
             const Data& output);
@@ -61,7 +61,7 @@ public:
     Stage addCopyStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output,
             const std::string& origin);
@@ -69,7 +69,7 @@ public:
     Stage addPadStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             PadMode padMode,
             float pad_value,
             const DimValues& pads_begin,
@@ -80,14 +80,14 @@ public:
     Stage addNoneStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const DataVector& inputs,
             const DataVector& outputs);
 
     Stage addPowerStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             float scale,
             float power,
             float bias,
@@ -97,7 +97,7 @@ public:
     Stage addReLUStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             float negativeSlope,
             const Data& input,
             const Data& output,
@@ -106,14 +106,14 @@ public:
     Stage addReshapeStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output);
 
     Stage addConcatStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             Dim axis,
             const DataVector& inputs,
             const Data& output,
@@ -122,7 +122,7 @@ public:
     Stage addConcatStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             std::vector<DimValues>&& offsets,
             const DataVector& inputs,
             const Data& output);
@@ -130,7 +130,7 @@ public:
     Stage addSplitStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             Dim axis,
             const Data& input,
             const DataVector& outputs);
@@ -138,14 +138,14 @@ public:
     Stage addSplitStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             std::vector<DimValues>&& offsets,
             const Data& input,
             const DataVector& outputs);
 
     Stage addScalingStage(
             const Model& model,
-            const ie::CNNLayerPtr& origLayer,
+            const NodePtr& node,
             float scale,
             const Data& input,
             const Data& output);
@@ -153,7 +153,7 @@ public:
     Stage addSwFullyConnectedStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& weights,
             const Data& biases,
@@ -163,7 +163,7 @@ public:
     Stage addExpandStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output,
             const DimValues& offset = DimValues());
@@ -171,7 +171,7 @@ public:
     Stage addCropStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output,
             const DimValues& offset = DimValues());
@@ -179,7 +179,7 @@ public:
     Stage addSoftMaxStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output,
             Dim axis);
@@ -187,7 +187,7 @@ public:
     Stage addClampStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             float min,
             float max,
             const Data& input,
@@ -196,7 +196,7 @@ public:
     Stage addGemmStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             float alpha,
             float beta,
             bool transposeA,
@@ -207,7 +207,7 @@ public:
     Stage addPoolingStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output,
             const ie::PoolingLayer::PoolType& poolType);
@@ -215,7 +215,7 @@ public:
     Stage addGatherStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input0,
             const Data& input1,
             const Data& output,
@@ -224,7 +224,7 @@ public:
     Stage addPermuteStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output,
             const DimValues_<Dim>& permutation);
@@ -232,7 +232,7 @@ public:
     Stage addSCReluStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             float negativeSlope,
             Dim axis,
             const Data& input,
@@ -243,14 +243,14 @@ public:
     Stage addReorderStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output);
 
     Stage addConvolutionStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output,
             const Data& weights,
@@ -261,7 +261,7 @@ public:
             const Model& model,
             const std::string& name,
             StageType reduceType,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             bool keep_dims,
             const DataVector& inputs,
             const Data& output);
@@ -269,7 +269,7 @@ public:
     Stage addScatterUpdateStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output,
             const Data& indices,
@@ -279,7 +279,7 @@ public:
     Stage addScatterElementsUpdateStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& output,
             const Data& indices,
@@ -301,14 +301,14 @@ public:
     Stage addSigmoidStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const DataVector& inputs,
             const DataVector& outputs);
 
     Stage addProdStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input0,
             const Data& input1,
             const Data& output);
@@ -316,7 +316,7 @@ public:
     Stage addGatherNDStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             const Data& input,
             const Data& indices,
             const Data& output,
@@ -325,7 +325,7 @@ public:
     Stage addInterpStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             bool align_corners,
             InterpolateMode mode,
             InterpolateCoordTransMode coordinateTransformationMode,
@@ -335,7 +335,7 @@ public:
     Stage addResampleNearestStage(
             const Model& model,
             const std::string& name,
-            const ie::CNNLayerPtr& layer,
+            const NodePtr& node,
             bool antialias,
             InterpolateCoordTransMode coordinateTransformationMode,
             InterpolateNearestMode nearestMode,
@@ -343,16 +343,16 @@ public:
             const Data& input,
             const Data& output);
 
-    Stage addGatherElementsStage(const Model &model,
-                                 const std::string &name,
-                                 const ie::CNNLayerPtr &layer,
-                                 const DataVector &inputs,
-                                 const Data &output, int32_t axis,
+    Stage addGatherElementsStage(const Model& model,
+                                 const std::string& name,
+                                 const NodePtr& node,
+                                 const DataVector& inputs,
+                                 const Data& output, int32_t axis,
                                  bool rowIndicesMode);
 
     Stage addCTCGreedyDecoderSeqLenStage(const Model& model,
                                          const std::string& name,
-                                         const ie::CNNLayerPtr& layer,
+                                         const NodePtr& node,
                                          const DataVector& inputs,
                                          const DataVector& outputs,
                                          bool mergeRepeated,

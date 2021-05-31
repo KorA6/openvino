@@ -126,13 +126,13 @@ private:
 
 }  // namespace
 
-void FrontEnd::parseReduce(const Model& model, const ie::CNNLayerPtr& _layer, const DataVector& inputs, const DataVector& outputs) const {
-    VPU_THROW_UNLESS(_layer != nullptr,
-                     "parseReduce expects valid CNNLayerPtr, got nullptr");
-    const auto layer = std::dynamic_pointer_cast<ie::ReduceLayer>(_layer);
-    VPU_THROW_UNLESS(layer != nullptr,
+void FrontEnd::parseReduce(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const {
+    VPU_THROW_UNLESS(node != nullptr,
+                     "parseReduce expects valid NodePtr, got nullptr");
+    const auto& reduce = ngraph::as_type_ptr<ngraph::op::util::ArithmeticReductionKeepDims>(node);
+    VPU_THROW_UNLESS(reduce != nullptr,
                      "Layer {} of type {} cannot be casted to ie::ReduceLayer",
-                     _layer->name, _layer->type);
+                     reduce->get_name(), reduce->get_type_name());
     VPU_THROW_UNLESS(inputs.size() == 2,
                      "Layer {} of type {} expects {} inputs, but provided {}",
                      layer->name, layer->type, 2, inputs.size());
@@ -170,11 +170,11 @@ Stage StageBuilder::addReduceStage(
     const Model& model,
     const std::string& name,
     const StageType reduceType,
-    const ie::CNNLayerPtr& layer,
+    const NodePtr& node,
     const bool keep_dims,
     const DataVector& inputs,
     const Data& output) {
-    auto stage = model->addNewStage<ReduceStage>(name, reduceType, layer, inputs, {output});
+    auto stage = model->addNewStage<ReduceStage>(name, reduceType, node, inputs, {output});
 
     stage->attrs().set<int>("keep_dims", static_cast<int>(keep_dims));
     return stage;

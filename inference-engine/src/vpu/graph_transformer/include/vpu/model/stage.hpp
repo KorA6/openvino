@@ -400,7 +400,7 @@ class StageNode :
     // Bindings with IE
     //
 
-    VPU_MODEL_ATTRIBUTE(ie::CNNLayerPtr, origLayer, nullptr)
+    VPU_MODEL_ATTRIBUTE(std::shared_ptr<ngraph::Node>, origNode, nullptr)
 
     //
     // Edges
@@ -573,7 +573,7 @@ public:
     //
 
     inline std::string origLayerName() const {
-        return _origLayer != nullptr ? _origLayer->name : std::string();
+        return _origNode != nullptr ? _origNode->get_friendly_name() : std::string();
     }
 
     //

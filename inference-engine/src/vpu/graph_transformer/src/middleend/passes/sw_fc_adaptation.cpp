@@ -157,7 +157,7 @@ Pass::Ptr PassManager::swFullyConnectedAdaptation() {
 Stage StageBuilder::addSwFullyConnectedStage(
         const Model& model,
         const std::string& name,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const Data& input,
         const Data& weights,
         const Data& biases,
@@ -174,7 +174,7 @@ Stage StageBuilder::addSwFullyConnectedStage(
     auto fcStage = model->addNewStage<FullyConnectedStage>(
         name,
         StageType::FC,
-        layer,
+        node,
         {input, fcWeights},
         {output});
 
@@ -189,7 +189,7 @@ Stage StageBuilder::addSwFullyConnectedStage(
         addBiasStage(
             model,
             name + "@biases",
-            layer,
+            node,
             biasesInput, biases,
             output);
     }
@@ -205,7 +205,7 @@ Stage StageBuilder::addSwFullyConnectedStage(
         addScaleStage(
             model,
             name + "@scales",
-            layer,
+            node,
             scalesInput, scales,
             output);
     }
