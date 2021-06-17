@@ -12,82 +12,81 @@
 #include <vpu/stages/stub_stage.hpp>
 
 namespace vpu {
+// Rework logic
+void FrontEnd::parseFullyConnected(const Model& model, const NodePtr& _node, const DataVector& inputs, const DataVector& outputs) const {
+    // const auto& env = CompileEnv::get();
 
-void FrontEnd::parseFullyConnected(const Model& model, const ie::CNNLayerPtr& _layer, const DataVector& inputs, const DataVector& outputs) const {
-    const auto& env = CompileEnv::get();
+    // IE_ASSERT(inputs.size() == 1);
+    // IE_ASSERT(outputs.size() == 1);
+    // auto node = ngraph::as_type_ptr<ngraph::opset4::>(_node);
+    // IE_ASSERT(node != nullptr);
 
-    IE_ASSERT(inputs.size() == 1);
-    IE_ASSERT(outputs.size() == 1);
+    // auto input = inputs[0];
+    // auto output = outputs[0];
 
-    auto layer = std::dynamic_pointer_cast<ie::FullyConnectedLayer>(_layer);
-    IE_ASSERT(layer != nullptr);
+    // auto total_out_num = layer->_out_num * output->desc().dim(Dim::N);
+    // if (total_out_num != output->desc().totalDimSize()) {
+    //     VPU_THROW_EXCEPTION
+    //             << "Layer Name: " << layer->name << " Layer type: " << layer->type
+    //             << " has incorrect _out_num param. Expected: " << output->desc().totalDimSize()
+    //             << " Actual: " << layer->_out_num;
+    // }
 
-    auto input = inputs[0];
-    auto output = outputs[0];
+    // //
+    // // Check if HW is applicable
+    // //
 
-    auto total_out_num = layer->_out_num * output->desc().dim(Dim::N);
-    if (total_out_num != output->desc().totalDimSize()) {
-        VPU_THROW_EXCEPTION
-                << "Layer Name: " << layer->name << " Layer type: " << layer->type
-                << " has incorrect _out_num param. Expected: " << output->desc().totalDimSize()
-                << " Actual: " << layer->_out_num;
-    }
+    // auto tryHW = env.config.hwOptimization;
 
-    //
-    // Check if HW is applicable
-    //
+    // if (output->desc().dim(Dim::W, 1) != 1 || output->desc().dim(Dim::H, 1) != 1) {
+    //     tryHW = false;
+    // }
 
-    auto tryHW = env.config.compileConfig().hwOptimization;
+    // if (env.config.hwDisabled(layer->name)) {
+    //     tryHW = false;
+    // }
 
-    if (output->desc().dim(Dim::W, 1) != 1 || output->desc().dim(Dim::H, 1) != 1) {
-        tryHW = false;
-    }
+    // if (output->desc().totalDimSize() == 1) {
+    //     tryHW = false;
+    // }
 
-    if (env.config.compileConfig().hwDisabled(layer->name)) {
-        tryHW = false;
-    }
+    // //
+    // // Create const datas
+    // //
 
-    if (output->desc().totalDimSize() == 1) {
-        tryHW = false;
-    }
+    // Data weights, biases;
+    // std::tie(weights, biases) = getWeightsAndBiases(model, layer);
 
-    //
-    // Create const datas
-    //
+    // IE_ASSERT(weights->desc().totalDimSize() >=
+    //           input->desc().totalDimSize() / input->desc().dim(Dim::N, 1) * static_cast<int>(layer->_out_num));
+    // weights = model->duplicateData(
+    //     weights,
+    //     "@fc",
+    //     DataDesc({
+    //         input->desc().dim(Dim::W, 1) * input->desc().dim(Dim::H, 1),
+    //         input->desc().dim(Dim::C),
+    //         static_cast<int>(layer->_out_num)}));
 
-    Data weights, biases;
-    std::tie(weights, biases) = getWeightsAndBiases(model, layer);
+    // if (biases->usage() != DataUsage::Fake) {
+    //     IE_ASSERT(biases->desc().totalDimSize() >= output->desc().dim(Dim::C));
+    //     biases = model->duplicateData(
+    //         biases,
+    //         "@fc",
+    //         DataDesc({output->desc().dim(Dim::C)}));
+    // }
 
-    IE_ASSERT(weights->desc().totalDimSize() >=
-              input->desc().totalDimSize() / input->desc().dim(Dim::N, 1) * static_cast<int>(layer->_out_num));
-    weights = model->duplicateData(
-        weights,
-        "@fc",
-        DataDesc({
-            input->desc().dim(Dim::W, 1) * input->desc().dim(Dim::H, 1),
-            input->desc().dim(Dim::C),
-            static_cast<int>(layer->_out_num)}));
+    // //
+    // // Create stub stage
+    // //
 
-    if (biases->usage() != DataUsage::Fake) {
-        IE_ASSERT(biases->desc().totalDimSize() >= output->desc().dim(Dim::C));
-        biases = model->duplicateData(
-            biases,
-            "@fc",
-            DataDesc({output->desc().dim(Dim::C)}));
-    }
+    // auto stage = model->addNewStage<StubStage>(
+    //     layer->name,
+    //     StageType::StubFullyConnected,
+    //     layer,
+    //     {input, weights, biases, model->addFakeData()},
+    //     {output});
 
-    //
-    // Create stub stage
-    //
-
-    auto stage = model->addNewStage<StubStage>(
-        layer->name,
-        StageType::StubFullyConnected,
-        layer,
-        {input, weights, biases, model->addFakeData()},
-        {output});
-
-    stage->attrs().set<bool>("tryHW", tryHW);
+    // stage->attrs().set<bool>("tryHW", tryHW);
 }
 
 }  // namespace vpu

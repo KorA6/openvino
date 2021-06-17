@@ -18,12 +18,9 @@
 #include <vpu/stage_builder.hpp>
 
 namespace vpu {
-
-using InferenceEngine::CNNLayerPtr;
-
 static
 void parseConv2D(const Model      & model,
-                 const CNNLayerPtr& layer,
+                 const NodePtr    & layer,
                  const Data       & input,
                  const Data       & output,
                        Data       & weights,
@@ -31,16 +28,18 @@ void parseConv2D(const Model      & model,
 
 static
 void parseConvND(const Model      & model,
-                 const CNNLayerPtr& layer,
+                 const NodePtr    & layer,
                  const Data       & input,
                  const Data       & output,
                  const Data       & weights,
                  const Data       & biases);
 
 void FrontEnd::parseConvolution(const Model      & model,
-                                const CNNLayerPtr& layer,
+                                const NodePtr    & node,
                                 const DataVector & inputs,
                                 const DataVector & outputs) const {
+    auto conv = ngraph::as_type_ptr<ngraph::opset4::Convolution>(node);
+    VPU_THROW_UNLESS(conv != nullptr, "Can't parse node with name %s and type %s. Node is nullptr", conv->get_friendly_name(), conv->get_type_name());
     VPU_THROW_UNLESS(inputs.size() == 1, "invalid number of inputs: %lu", inputs.size());
     VPU_THROW_UNLESS(outputs.size() == 1, "invalid number of outputs: %lu", outputs.size());
 
@@ -58,14 +57,16 @@ void FrontEnd::parseConvolution(const Model      & model,
     }
 
     Data weights, biases;
-    std::tie(weights, biases) = getWeightsAndBiases(model, layer);
+    const auto weightsNode = conv->input_value(1).get_node_shared_ptr();
+    const auto biasNode = conv->inputs().size() == 3 ? conv->input_value(2).get_node_shared_ptr() : NodePtr();
+    std::tie(weights, biases) = getWeightsAndBiases(model, conv->get_friendly_name(), weightsNode, biasNode);
 
     bool is2D = input->desc().numDims() == 3 ||
                 input->desc().numDims() == 4;  // CHW or NCHW, not NCDWH or 6D or ...
     if (is2D) {
-        parseConv2D(model, layer, input, output, weights, biases);
+        parseConv2D(model, conv, input, output, weights, biases);
     } else {
-        parseConvND(model, layer, input, output, weights, biases);
+        parseConvND(model, conv, input, output, weights, biases);
     }
 }
 
@@ -117,7 +118,7 @@ bool canTryHW(const int outputNumDims,
 
 static
 void parseConv2D(const Model      & model,
-                 const CNNLayerPtr& layer,
+                 const NodePtr    & node,
                  const Data       & input,
                  const Data       & output,
                        Data       & weights,
@@ -126,25 +127,31 @@ void parseConv2D(const Model      & model,
     // Extract parameters
     //
 
-    auto convLayer = std::dynamic_pointer_cast<ie::ConvolutionLayer>(layer);
-    VPU_THROW_UNLESS(convLayer != nullptr, "failed dynamic cast to ConvolutionLayer");
+    auto conv = ngraph::as_type_ptr<ngraph::opset4::Convolution>(node);
+    VPU_THROW_UNLESS(conv != nullptr, "failed dynamic cast to ConvolutionLayer");
 
-    int kernelSizeX = convLayer->_kernel_x;
-    int kernelSizeY = convLayer->_kernel_y;
+    auto dataBatch = conv->input_value(0).get_partial_shape();
+    auto filters = conv->input_value(1).get_partial_shape().to_shape();
+    auto strides = conv->get_strides();
+    auto dilation = conv->get_dilations();
 
-    int kernelStrideX = convLayer->_stride_x;
-    int kernelStrideY = convLayer->_stride_y;
+    int kernelSizeX = filters[0];//conv ->_kernel_x;
+    int kernelSizeY = filters[1];//convLayer->_kernel_y;
 
-    auto paddings = getPaddings(*convLayer);
-    int padLeft = paddings.begin.exist(ie::X_AXIS) ? paddings.begin[ie::X_AXIS] : 0;
-    int padRight = paddings.end.exist(ie::X_AXIS) ? paddings.end[ie::X_AXIS] : padLeft;
-    int padTop = paddings.begin.exist(ie::Y_AXIS) ? paddings.begin[ie::Y_AXIS] : 0;
-    int padBottom = paddings.end.exist(ie::Y_AXIS) ? paddings.end[ie::Y_AXIS] : padTop;
+    int kernelStrideX = strides[0]; // convLayer->_stride_x;
+    int kernelStrideY = strides[1]; // convLayer->_stride_y;
+    auto padsBegin = conv->get_pads_begin();
+    auto padsEnd = conv->get_pads_end();
+    // auto paddings = getPaddings(*convLayer);
+    int padLeft = padsBegin[0]; // paddings.begin.exist(ie::X_AXIS) ? paddings.begin[ie::X_AXIS] : 0;
+    int padRight = padsEnd[0]; // paddings.end.exist(ie::X_AXIS) ? paddings.end[ie::X_AXIS] : padLeft;
+    int padTop = padsBegin[1]; // paddings.begin.exist(ie::Y_AXIS) ? paddings.begin[ie::Y_AXIS] : 0;
+    int padBottom = padsEnd[1]; // paddings.end.exist(ie::Y_AXIS) ? paddings.end[ie::Y_AXIS] : padTop;
 
-    int dilationX = convLayer->_dilation_x;
-    int dilationY = convLayer->_dilation_y;
+    int dilationX = dilation[0]; // convLayer->_dilation_x;
+    int dilationY = dilation[1]; // convLayer->_dilation_y;
 
-    int groupSize = convLayer->_group;
+    int groupSize = conv->input_value(1).get_shape()[0];  // conv-> convLayer->_group;
 
     // kernelStrideY doesn't matter when kernelSizeY==InputSizeY, change it to try HW in 1D case
     if (kernelSizeY == input->desc().dim(Dim::H) + padTop + padBottom)
@@ -165,7 +172,7 @@ void parseConv2D(const Model      & model,
                           dilationY,
                           env.config.compileConfig().hwOptimization,
                           env.config.compileConfig().hwDilation,
-                          env.config.compileConfig().hwDisabled(layer->name));
+                          env.config.compileConfig().hwDisabled(conv->get_friendly_name()));
 
     //
     // Create const datas
@@ -209,9 +216,9 @@ void parseConv2D(const Model      & model,
     //
 
     auto stage = model->addNewStage<StubStage>(
-        layer->name,
+        conv->get_friendly_name(),
         StageType::StubConv,
-        layer,
+        conv,
         {input, weights, biases, model->addFakeData()},
         {output});
 
@@ -332,7 +339,7 @@ private:
 
 static
 void parseConvND(const Model      & model,
-                 const CNNLayerPtr& layer,
+                 const NodePtr    & node,
                  const Data       & input,
                  const Data       & output,
                  const Data       & weights,
@@ -341,10 +348,14 @@ void parseConvND(const Model      & model,
     // Check layer parameters
     //
 
-    auto convLayer = std::dynamic_pointer_cast<ie::ConvolutionLayer>(layer);
-    VPU_THROW_UNLESS(convLayer != nullptr, "failed dynamic cast to ConvolutionLayer");
+    auto conv = ngraph::as_type_ptr<ngraph::opset4::Convolution>(node);
+    VPU_THROW_UNLESS(conv != nullptr, "failed dynamic cast to ConvolutionLayer");
+    auto dataBatch = conv->input_value(0).get_partial_shape();
+    auto filters = conv->input_value(1).get_partial_shape().to_shape();
+    auto strides = conv->get_strides();
+    auto dilations = conv->get_dilations();
 
-    auto kernelShape = convLayer->_kernel;
+    auto kernelShape = filters;
     int kernelNDims = static_cast<int>(kernelShape.size());
     // Yet, only 3D kernel supported (NCDHW)
     // Later, if support 4D, 5D, etc, please
@@ -353,9 +364,9 @@ void parseConvND(const Model      & model,
     // parseConv2D() function
     VPU_THROW_UNLESS(kernelNDims == 3, "unsupported number of kernel dims: %d", kernelNDims);
 
-    auto paddings = getPaddings(*convLayer);
-    auto pads_begin = paddings.begin;
-    auto pads_end   = paddings.end;
+    // auto paddings = getPaddings(*convLayer);
+    auto pads_begin = conv->get_pads_begin(); // paddings.begin;
+    auto pads_end   = conv->get_pads_end();   // paddings.end;
     VPU_THROW_UNLESS(pads_begin.size() == pads_end.size(),
                      "number of dims must be equal: pads_begin ndims=%lu, pads_end ndims=%lu",
                      pads_begin.size(), pads_end.size());
@@ -363,20 +374,20 @@ void parseConvND(const Model      & model,
                      "number of dims must equal: pads ndims=%lu, kernel ndims=%lu",
                      pads_begin.size(), kernelShape.size());
 
-    auto strides = convLayer->_stride;
+    // auto strides = convLayer->_stride;
     VPU_THROW_UNLESS(strides.size() == kernelShape.size(),
                      "number of dims must equal: strides ndims=%lu, kernel ndims=%d",
                      strides.size(), kernelShape.size());
 
-    auto dilations = convLayer->_dilation;
+    // auto dilations = convLayer->_dilation;
     VPU_THROW_UNLESS(dilations.size() == kernelShape.size(),
                      "number of dims must equal: dilations ndims=%lu, kernel ndims=%lu",
                      dilations.size(), kernelShape.size());
 
-    int output_channels = convLayer->_out_depth;
+    int output_channels = filters[0];
     VPU_THROW_UNLESS(output_channels > 0, "invalid number of output channels: %d", output_channels);
 
-    int groups = convLayer->_group;
+    int groups = 1;
     VPU_THROW_UNLESS(groups == 1, "number of groups=%d, but grouped 3D convolution is not supported", groups);
 
     int inputNDims = input->desc().numDims();
@@ -478,7 +489,7 @@ void parseConvND(const Model      & model,
                           dilations[1],
                           env.config.compileConfig().hwOptimization,
                           env.config.compileConfig().hwDilation,
-                          env.config.compileConfig().hwDisabled(layer->name));
+                          env.config.compileConfig().hwDisabled(node->get_friendly_name()));
 
     int try_hw = tryHW ? 1 : 0;
 
@@ -487,9 +498,9 @@ void parseConvND(const Model      & model,
     //
 
     auto stage = model->addNewStage<ConvNDStage>(
-        layer->name,
+        node->get_friendly_name(),
         StageType::ConvND,
-        layer,
+        node,
         {input, weightsReshaped, biases},
         {output});
 
@@ -509,7 +520,7 @@ void parseConvND(const Model      & model,
 Stage StageBuilder::addConvolutionStage(
         const Model& model,
         const std::string& name,
-        const ie::CNNLayerPtr& layer,
+        const NodePtr& node,
         const Data& input,
         const Data& output,
         const Data& weights,
@@ -527,7 +538,7 @@ Stage StageBuilder::addConvolutionStage(
     auto stage = model->addNewStage<StubStage>(
         name,
         StageType::StubConv,
-        layer,
+        node,
         {input, weights, biases, scales},
         {output});
     return stage;
