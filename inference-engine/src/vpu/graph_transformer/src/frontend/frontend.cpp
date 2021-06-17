@@ -323,41 +323,41 @@ void FrontEnd::parseLayer(const Model& model, const NodePtr& node, const DataVec
     }
 }
 
-// void FrontEnd::processTrivialCases(const Model& model) {
-//     std::unordered_map<ie::DataPtr, std::pair<Data, Data>> ieDataToTrivialCase;
-//     for (const auto& data : model->datas()) {
-//         const auto& origNode = data->origNode();
-//         if (origNode == nullptr) {
-//             continue;
-//         }
+void FrontEnd::processTrivialCases(const Model& model) {
+    std::unordered_map<NodePtr, std::pair<Data, Data>> ieDataToTrivialCase;
+    for (const auto& data : model->datas()) {
+        const auto& origNode = data->origNode();
+        if (origNode == nullptr) {
+            continue;
+        }
 
-//         auto& trivialCase = ieDataToTrivialCase[origNode];
-//         auto& destination = data->usage() == DataUsage::Output ? trivialCase.second : trivialCase.first;
-//         VPU_THROW_UNLESS(ieDataToTrivialCase.count(origNode) == 0 || destination == nullptr,
-//             "Encountered IE data object {} which has two vpu data objects {} and {} of the same type {} associated with it, while only one is permitted",
-//             origNode->getName(), destination->name(), data->name(), destination->usage());
-//         destination = data;
-//     }
+        auto& trivialCase = ieDataToTrivialCase[origNode];
+        auto& destination = data->usage() == DataUsage::Output ? trivialCase.second : trivialCase.first;
+        VPU_THROW_UNLESS(ieDataToTrivialCase.count(origNode) == 0 || destination == nullptr,
+            "Encountered node {} which has two vpu data objects {} and {} of the same type {} associated with it, while only one is permitted",
+            origNode->get_friendly_name(), destination->name(), data->name(), destination->usage());
+        destination = data;
+    }
 
-//     for (const auto& trivialCase : ieDataToTrivialCase) {
-//         const auto& trivialCasePair = trivialCase.second;
+    for (const auto& trivialCase : ieDataToTrivialCase) {
+        const auto& trivialCasePair = trivialCase.second;
 
-//         const auto& unconnectedInput = trivialCasePair.first;
-//         const auto& unconnectedOutput = trivialCasePair.second;
+        const auto& unconnectedInput = trivialCasePair.first;
+        const auto& unconnectedOutput = trivialCasePair.second;
 
-//         if (!unconnectedInput || !unconnectedOutput) {
-//             continue;
-//         }
+        if (!unconnectedInput || !unconnectedOutput) {
+            continue;
+        }
 
-//         _stageBuilder->addCopyStage(
-//             model,
-//             unconnectedInput->name() + "@copy",
-//             nullptr,
-//             {unconnectedInput},
-//             {unconnectedOutput},
-//             "processTrivialCase");
-//     }
-// }
+        _stageBuilder->addCopyStage(
+            model,
+            unconnectedInput->name() + "@copy",
+            nullptr,
+            {unconnectedInput},
+            {unconnectedOutput},
+            "processTrivialCase");
+    }
+}
 
 void FrontEnd::defaultOnUnsupportedLayerCallback(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs,
                                                  const std::string& extraMessage) {
@@ -467,7 +467,7 @@ ModelPtr FrontEnd::runCommonPasses(ie::CNNNetwork network,
         // Process trivial cases like `input->output`, `const->output`
         //
 
-        // processTrivialCases(model);
+        processTrivialCases(model);
 
         if (!CompileEnv::get().config.compileConfig().disableConvertStages) {
             addDataTypeConvertStages(model);
