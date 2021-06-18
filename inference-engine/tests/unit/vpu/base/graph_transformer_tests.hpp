@@ -130,19 +130,26 @@
 
 // bool checkExecutionOrder(const Model& model, const std::vector<int>& execOrder);
 
-<<<<<<< HEAD
-PluginConfiguration createConfiguration();
+// <<<<<<< HEAD
+// <<<<<<< HEAD
+// PluginConfiguration createConfiguration();
 
-class GraphTransformerTest : public ::testing::Test {
-public:
-    ncDevicePlatform_t platform = ncDevicePlatform_t::NC_MYRIAD_X;
-    PluginConfiguration config;
-=======
+// class GraphTransformerTest : public ::testing::Test {
+// public:
+//     ncDevicePlatform_t platform = ncDevicePlatform_t::NC_MYRIAD_X;
+//     PluginConfiguration config;
+// =======
+// // class GraphTransformerTest : public ::testing::Test {
+// // public:
+// //     Platform platform = Platform::MYRIAD_X;
+// //     CompilationConfig config;
+// >>>>>>> [VPU] switch CNNLayer -> ngraph
+// =======
 // class GraphTransformerTest : public ::testing::Test {
 // public:
 //     Platform platform = Platform::MYRIAD_X;
 //     CompilationConfig config;
->>>>>>> [VPU] switch CNNLayer -> ngraph
+// >>>>>>> refactoring
 
 //     StageBuilder::Ptr stageBuilder;
 //     FrontEnd::Ptr frontEnd;

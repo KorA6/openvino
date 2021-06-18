@@ -24,24 +24,19 @@ IeParsedNetwork parseNetwork(const ie::CNNNetwork& network) {
     IeParsedNetwork out;
     out.networkInputs = network.getInputsInfo();
     out.networkOutputs = network.getOutputsInfo();
-    // out.networkParameters = network.getFunction()->get_parameters();
-    // out.networkParameters = network.getFunction()->get_parameters();
     env.log->trace("Got %d inputs and %d outputs", out.networkInputs.size(), out.networkOutputs.size());
     IE_ASSERT(!out.networkInputs.empty());
     IE_ASSERT(!out.networkOutputs.empty());
 
-    // looks unnecessary 
     env.log->trace("Perform topological sort");
     const auto sortedNodes = network.getFunction()->get_ordered_ops();
     IE_ASSERT(!sortedNodes.empty());
     for (const auto& node : sortedNodes) {
         VPU_LOGGER_SECTION(env.log);
-        std::cout << "node :" << node->get_friendly_name() << std::endl;
         IE_ASSERT(node != nullptr);
         if (ngraph::as_type_ptr<ngraph::op::Parameter>(node)) {
             env.log->trace("Found Parameter node : %s", node->get_friendly_name());
             out.networkParameters.emplace_back(node);
-            std::cout << node->get_friendly_name() << " " << out.networkParameters.size() << std::endl;
             continue;
         }
         if (ngraph::as_type_ptr<ngraph::op::Result>(node)) {
@@ -51,20 +46,14 @@ IeParsedNetwork parseNetwork(const ie::CNNNetwork& network) {
         }
 
         if (ngraph::as_type_ptr<ngraph::op::Constant>(node)) {
-            env.log->trace("Found Const layer : %s", node->get_friendly_name());
+            env.log->trace("Found Const node : %s", node->get_friendly_name());
             if (node->get_output_size() != 1) {
                 VPU_THROW_FORMAT(
-                    "Const layer %v has unsupported number of outputs %v",
+                    "Const node %v has unsupported number of outputs %v",
                     node->get_friendly_name(), node->get_output_size());
             }
 
-            // const auto constData = layer->outData[0];
-            // IE_ASSERT(constData != nullptr);
-
-            // const auto constBlob = shareWe;
-            // IE_ASSERT(constBlob != nullptr);
-
-            out.constDatas.emplace_back(node);
+            out.networkConstants.emplace_back(node);
 
             continue;
         }

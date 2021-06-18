@@ -357,5 +357,4 @@
 // ));
 
 // }
->>>>>>> [VPU] switch CNNLayer -> ngraph
 

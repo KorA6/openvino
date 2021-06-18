@@ -37,21 +37,21 @@ void FrontEnd::parsePReLU(const Model& model, const NodePtr& node, const DataVec
     IE_ASSERT(inputs.size() == 1);
     IE_ASSERT(outputs.size() == 1);
     auto inputNode = node->input_value(1).get_node_shared_ptr();
-    // auto weightsBlob = shareWeights_(inputNode);
+    auto weightsBlob = shareWeights(inputNode);
 
-    // IE_ASSERT(weightsBlob != nullptr);
+    IE_ASSERT(weightsBlob != nullptr);
 
     auto channelShared =  0;   //prelu-> layer->GetParamAsInt("channel_shared", 0); not sure
 
     auto output = outputs[0];
 
-    // auto weights = model->addConstData(
-    //     prelu->get_friendly_name() + "@weights",
-    //     DataDesc({output->desc().dim(Dim::C)}),
-    //     std::make_shared<PReLUBlobContent>(weightsBlob, DataDesc({output->desc().dim(Dim::C)}),
-    //                                        channelShared ? output->desc().dim(Dim::C) : 1));
+    auto weights = model->addConstData(
+        prelu->get_friendly_name() + "@weights",
+        DataDesc({output->desc().dim(Dim::C)}),
+        std::make_shared<PReLUBlobContent>(weightsBlob, DataDesc({output->desc().dim(Dim::C)}),
+                                           channelShared ? output->desc().dim(Dim::C) : 1));
 
-    // model->addNewStage<PReluStage>(prelu->get_name(), StageType::PRelu, prelu, {inputs[0], weights}, outputs);
+    model->addNewStage<PReluStage>(prelu->get_name(), StageType::PRelu, prelu, {inputs[0], weights}, outputs);
 }
 
 }  // namespace vpu

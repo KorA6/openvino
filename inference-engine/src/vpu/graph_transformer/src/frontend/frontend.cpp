@@ -66,6 +66,22 @@ FrontEnd::FrontEnd(StageBuilder::Ptr stageBuilder, const ie::ICore* core)
         {"Concat",                                             LAYER_PARSER(parseConcat)},
         // {"Eltwise",                                            LAYER_PARSER(parseEltwise)},
         {"Subtract",                                           LAYER_PARSER(parseSubtract)},
+        {"Add",                                                LAYER_PARSER(parseAdd)},
+        {"Multiply",                                           LAYER_PARSER(parseMultiply)},
+        {"Maximum",                                            LAYER_PARSER(parseMaximum)},
+        {"Divide",                                             LAYER_PARSER(parseDivide)},
+        {"Minimum",                                            LAYER_PARSER(parseMinimum)},
+        {"SquaredDifference",                                  LAYER_PARSER(parseSquaredDifference)},
+        {"Equal",                                              LAYER_PARSER(parseEqual)},
+        {"NotEqual",                                           LAYER_PARSER(parseNotEqual)},
+        {"Greater",                                            LAYER_PARSER(parseGreater)},
+        {"GreaterEqual",                                       LAYER_PARSER(parseGreaterEqual)},
+        {"Less",                                               LAYER_PARSER(parseLess)},
+        {"LessEqual",                                          LAYER_PARSER(parseLessEqual)},
+        {"LogicalNot",                                         LAYER_PARSER(parseLogicalNot)},
+        {"LogicalAnd",                                         LAYER_PARSER(parseLogicalAnd)},
+        {"LogicalOr",                                          LAYER_PARSER(parseLogicalOr)},
+        {"LogicalXor",                                         LAYER_PARSER(parseLogicalXor)},
         // Slice is represented as Split in VPU model
         {"Split",                                              LAYER_PARSER(parseSplit)},
         {"Slice",                                              LAYER_PARSER(parseSplit)},
@@ -221,9 +237,7 @@ ie::CNNNetwork FrontEnd::convertNetwork(ie::CNNNetwork& network) {
                               ngraph::pass::ConvertStridedSliceToCropMatcher>(transformationPredicate);
 
     manager.run_passes(nGraphFunc);
-    IE_SUPPRESS_DEPRECATED_START
     return network;
-    IE_SUPPRESS_DEPRECATED_END
 }
 
 std::set<std::string> FrontEnd::checkSupportedLayers(const ie::CNNNetwork& network) {
@@ -420,15 +434,13 @@ ModelPtr FrontEnd::runCommonPasses(ie::CNNNetwork network,
         env.log->trace("Update IE Network");
         VPU_LOGGER_SECTION(env.log);
 
-        if (network.getFunction() && env.config.compileConfig().forceDeprecatedCnnConversion) {
-            network = convertNetwork(network);
-        }
-
         detectNetworkBatch(network, model);
 
-        if (network.getFunction()) {
-            network = convertNetwork(network);
-        }
+        //
+        // Running ngraph passes
+        //
+
+        network = convertNetwork(network);
 
         const std::vector<std::pair<ngraph::element::Type, ngraph::element::Type>> convert_precision_list {
             {ngraph::element::i64, ngraph::element::i32},
@@ -576,7 +588,7 @@ void FrontEnd::getInputAndOutputData(
     }
 }
 
-ie::Blob::Ptr shareWeights_(const NodePtr& node)  {
+ie::Blob::Ptr FrontEnd::shareWeights(const NodePtr& node)  {
     auto constLayer = ngraph::as_type_ptr<ngraph::opset4::Constant>(node);
     if (!constLayer) IE_THROW() << "Cannot share weights! Constant operation is empty!";
     auto dataPrecision = ie::details::convertPrecision(constLayer->get_element_type());
@@ -597,32 +609,32 @@ ie::Blob::Ptr shareWeights_(const NodePtr& node)  {
 
 std::tuple<Data, Data> FrontEnd::getWeightsAndBiases(const Model& model, const std::string nodeName,
                                                      const NodePtr& weightsNode, const NodePtr& biasesNode) const {
-    // auto constant = ngraph::as_type_ptr<ngraph::opset4::Constant>(weightsNode);
-    // VPU_THROW_UNLESS(constant != nullptr, "Can't get weights. Node with name {} has no constant input", nodeName);
+    auto constant = ngraph::as_type_ptr<ngraph::opset4::Constant>(weightsNode);
+    VPU_THROW_UNLESS(constant != nullptr, "Can't get weights. Node with name {} has no constant input", nodeName);
     
-    // const auto origWeights = shareWeights_(weightsNode);
-    // VPU_THROW_UNLESS(origWeights != nullptr, "Can't get weights. Node with name {} has no constant input", nodeName);
+    const auto origWeights = shareWeights(weightsNode);
+    VPU_THROW_UNLESS(origWeights != nullptr, "Can't get weights. Node with name {} has no constant input", nodeName);
 
-    // const auto weights = model->addConstData(
-    //     nodeName + "@weights",
-    //     DataDesc({origWeights->size()}),
-    //     ieBlobContent(origWeights));
+    const auto weights = model->addConstData(
+        nodeName + "@weights",
+        DataDesc({origWeights->size()}),
+        ieBlobContent(origWeights));
 
-    // Data biases;
-    // if (biasesNode != nullptr) {
-    //     // auto constBiasesNode = ngraph::as_type_ptr<ngraph::opset4::Constant>(biasesNode);
-    //     // VPU_THROW_UNLESS(constBiasesNode != nullptr, "Can't get biases. Node with name {} has no constant input", nodeName);
+    Data biases;
+    if (biasesNode != nullptr) {
+        auto constBiasesNode = ngraph::as_type_ptr<ngraph::opset4::Constant>(biasesNode);
+        VPU_THROW_UNLESS(constBiasesNode != nullptr, "Can't get biases. Node with name {} has no constant input", nodeName);
 
-    //     const auto origBiases = shareWeights_(biasesNode);
-    //     biases = model->addConstData(
-    //         nodeName + "@biases",
-    //         DataDesc({origBiases->size()}),
-    //         ieBlobContent(origBiases));
-    // } else {
-    //     biases = model->addFakeData();
-    // }
+        const auto origBiases = shareWeights(biasesNode);
+        biases = model->addConstData(
+            nodeName + "@biases",
+            DataDesc({origBiases->size()}),
+            ieBlobContent(origBiases));
+    } else {
+        biases = model->addFakeData();
+    }
 
-    // return std::make_tuple(weights, biases);
+    return std::make_tuple(weights, biases);
 }
 
 }  // namespace vpu

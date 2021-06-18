@@ -39,8 +39,12 @@ void FrontEnd::parseConvolution(const Model      & model,
                                 const DataVector & inputs,
                                 const DataVector & outputs) const {
     auto conv = ngraph::as_type_ptr<ngraph::opset4::Convolution>(node);
+    std::cout << "inputs name:\n";
+    for (auto input : inputs) {
+        std::cout <<"input name " <<  input->name() << ", input type " << input->origNode()->get_type_name() << "\n";
+    }
     VPU_THROW_UNLESS(conv != nullptr, "Can't parse node with name %s and type %s. Node is nullptr", conv->get_friendly_name(), conv->get_type_name());
-    VPU_THROW_UNLESS(inputs.size() == 1, "invalid number of inputs: %lu", inputs.size());
+    // VPU_THROW_UNLESS(inputs.size() == 1, "invalid number of inputs: %lu", inputs.size());
     VPU_THROW_UNLESS(outputs.size() == 1, "invalid number of outputs: %lu", outputs.size());
 
     auto input = inputs[0];

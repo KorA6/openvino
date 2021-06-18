@@ -19,9 +19,13 @@ namespace ie = InferenceEngine;
 struct IeParsedNetwork final {
     ie::InputsDataMap networkInputs;
     ie::OutputsDataMap networkOutputs;
-    std::vector<NodePtr> constDatas;
-    std::vector<NodePtr> networkParameters;
-    std::vector<NodePtr> networkResults;
+
+    // Nodes that shouldn't be executed
+    ngraph::NodeVector networkParameters;
+    ngraph::NodeVector networkConstants;
+    ngraph::NodeVector networkResults;
+
+    // Nodes that should be executed
     ngraph::NodeVector orderedOps;
 };
 

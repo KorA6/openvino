@@ -150,13 +150,13 @@ public:
     void parsePermute(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;   // ok
     void parseDetectionOutput(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const; // need to validate keep_top_k??
     // void parseEltwise(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;  // need to rework logic
-    void parseSubtract(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;  // need to rework logic
-    void parseAdd(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;  // need to rework logic
-    void parseMultiply(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;  // need to rework logic
-    void parseMaximum(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;  // need to rework logic
-    void parseDivide(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;  // need to rework logic
-    void parseMinimum(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;  // need to rework logic
-    void parseSquaredDifference(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;  // need to rework logic
+    void parseSubtract(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
+    void parseAdd(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
+    void parseMultiply(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
+    void parseMaximum(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
+    void parseDivide(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
+    void parseMinimum(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
+    void parseSquaredDifference(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
     void parseEqual(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
     void parseNotEqual(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
     void parseGreater(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
@@ -273,7 +273,7 @@ private:
             DataVector& inputs,
             DataVector& outputs);
 
-    static ie::Blob::Ptr shareWeights_(const NodePtr& constLayer);
+    static ie::Blob::Ptr shareWeights(const NodePtr& constLayer);
     std::tuple<Data, Data> getWeightsAndBiases(const Model& model, const std::string nodeName, const NodePtr& weightsNode, const NodePtr& biasesNode) const;
 
     void defaultOnUnsupportedLayerCallback(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs,

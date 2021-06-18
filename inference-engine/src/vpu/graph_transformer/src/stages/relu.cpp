@@ -44,9 +44,11 @@ void FrontEnd::parseReLU(const Model& model, const NodePtr& _node, const DataVec
     
     IE_ASSERT(relu != nullptr);
     float negativeSlope = 0;
-    auto slopeNode = std::dynamic_pointer_cast<ngraph::opset4::Constant>(relu->get_input_node_shared_ptr(1));
-    if (slopeNode != nullptr) {
-        negativeSlope = slopeNode->cast_vector<float>()[0];
+    if (relu->get_input_size() > 1) {
+        auto slopeNode = std::dynamic_pointer_cast<ngraph::opset4::Constant>(relu->get_input_node_shared_ptr(1));
+        if (slopeNode != nullptr) {
+            negativeSlope = slopeNode->cast_vector<float>()[0];
+        }
     }
     _stageBuilder->addReLUStage(model, relu->get_name(), relu, negativeSlope, inputs[0], outputs[0]);
 }

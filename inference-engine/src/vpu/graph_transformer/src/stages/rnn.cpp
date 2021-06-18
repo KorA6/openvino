@@ -315,35 +315,35 @@ void FrontEnd::parseLSTMCell(const Model& model, const NodePtr& node, const Data
     auto newWeights = model->addConstData(lstmCell->get_name() + "@weights", weights->desc(), generator);
 
     DataVector stageInputs = inputs;
-    // auto origWeights = shareWeights_(node->input_value(3).get_node_shared_ptr());
+    auto origWeights = shareWeights(node->input_value(3).get_node_shared_ptr());
 
-    // IE_ASSERT(origWeights != nullptr) << "weights are empty for node: " << lstmCell->get_friendly_name();
+    IE_ASSERT(origWeights != nullptr) << "weights are empty for node: " << lstmCell->get_friendly_name();
 
-    // if (_lstmWeights.count(origWeights) != 0) {
-    //     stageInputs.emplace_back(_lstmWeights[origWeights]);
-    // } else {
-    //     _lstmWeights[origWeights] = newWeights;
-    //     stageInputs.emplace_back(newWeights);
-    // }
+    if (_lstmWeights.count(origWeights) != 0) {
+        stageInputs.emplace_back(_lstmWeights[origWeights]);
+    } else {
+        _lstmWeights[origWeights] = newWeights;
+        stageInputs.emplace_back(newWeights);
+    }
 
-    // auto origBiases = shareWeights_(node->input_value(4).get_node_shared_ptr());
+    auto origBiases = shareWeights(node->input_value(4).get_node_shared_ptr());
 
     
-    // if (origBiases == nullptr) {
-    //     biases = model->addFakeData();
-    // } else {
-    //     if (_lstmBiases.count(origBiases) != 0) {
-    //         biases = _lstmBiases[origBiases];
-    //     } else {
-    //         biases = model->addConstData(
-    //                 lstmCell->get_friendly_name() + "@biases",
-    //                 DataDesc({origBiases->size()}),
-    //                 ieBlobContent(origBiases));
-    //         _lstmBiases[origBiases] = biases;
-    //     }
-    // }
+    if (origBiases == nullptr) {
+        biases = model->addFakeData();
+    } else {
+        if (_lstmBiases.count(origBiases) != 0) {
+            biases = _lstmBiases[origBiases];
+        } else {
+            biases = model->addConstData(
+                    lstmCell->get_friendly_name() + "@biases",
+                    DataDesc({origBiases->size()}),
+                    ieBlobContent(origBiases));
+            _lstmBiases[origBiases] = biases;
+        }
+    }
 
-    // stageInputs.emplace_back(biases);
+    stageInputs.emplace_back(biases);
 
     // Filter out handles to data which are nullptr (they are excluded in FrontEnd::getInputAndOutputData)
     DataVector realOutputs;
