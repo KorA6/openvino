@@ -48,6 +48,8 @@
 #include <vpu/ngraph/transformations/extract_dynamic_batch/extract_dynamic_batch.hpp>
 #include <vpu/ngraph/transformations/merge_gather_gather_elements.hpp>
 #include <transformations/op_conversions/mvn6_decomposition.hpp>
+/// debug
+#include <ngraph/pass/visualize_tree.hpp>
 namespace vpu {
 FrontEnd::FrontEnd(StageBuilder::Ptr stageBuilder, const ie::ICore* core)
     : _stageBuilder(std::move(stageBuilder)),
@@ -237,6 +239,8 @@ ie::CNNNetwork FrontEnd::convertNetwork(ie::CNNNetwork& network) {
                               ngraph::pass::ConvertStridedSliceToCropMatcher>(transformationPredicate);
 
     manager.run_passes(nGraphFunc);
+    ngraph::pass::VisualizeTree("/home/akorolev/work/tmp/cnnlayer_to_ngraph/dump_alexnet.svg").run_on_function(nGraphFunc);
+
     return network;
 }
 
