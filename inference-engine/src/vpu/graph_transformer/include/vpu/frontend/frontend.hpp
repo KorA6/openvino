@@ -131,6 +131,7 @@ public:
     //
 
     void parseConvolution(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const; // reworked
+    void parseGroupConvolution(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const; // reworked
     void parseAvgPooling(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
     void parseMaxPooling(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const;
     void parseFullyConnected(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const; // rework

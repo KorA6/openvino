@@ -129,7 +129,10 @@ protected:
 }  // namespace
 
 void FrontEnd::parseSplit(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const {
-    IE_ASSERT(inputs.size() == 1);
+    for (auto input : node->inputs()) {
+        std::cout << "input node: " <<input.get_source_output().get_node_shared_ptr()->get_friendly_name() << std::endl;
+    }
+    // IE_ASSERT(inputs.size() == 1);
     IE_ASSERT(!outputs.empty());
 
     const auto split = ngraph::as_type_ptr<ngraph::op::v1::Split>(node);

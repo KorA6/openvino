@@ -39,6 +39,7 @@
 #include <vpu/ngraph/transformations/merge_subsequent_dsr_operations.hpp>
 #include "vpu/ngraph/transformations/dynamic_to_static_shape.hpp"
 #include "vpu/ngraph/transformations/eliminate_shapeof_after_dsr.hpp"
+#include "vpu/ngraph/transformations/convert_matmul_to_fc.hpp"
 #include <vpu/ngraph/operations/dynamic_shape_resolver.hpp>
 #include <vpu/ngraph/utilities.hpp>
 #include <legacy/ie_util_internal.hpp>
@@ -56,6 +57,7 @@ FrontEnd::FrontEnd(StageBuilder::Ptr stageBuilder, const ie::ICore* core)
     _core(core),
     parsers{{
         {"Convolution",                                        LAYER_PARSER(parseConvolution)},
+        {"GroupConvolution",                                        LAYER_PARSER(parseGroupConvolution)},
         {"AvgPool",                                            LAYER_PARSER(parseAvgPooling)},
         {"MaxPool",                                            LAYER_PARSER(parseMaxPooling)},
         {"ReLU",                                               LAYER_PARSER(parseReLU)},
@@ -64,7 +66,7 @@ FrontEnd::FrontEnd(StageBuilder::Ptr stageBuilder, const ie::ICore* core)
         {"SoftMax",                                            LAYER_PARSER(parseSoftMax)},
         {"GRN",                                                LAYER_PARSER(parseGRN)},
         {"MVN",                                                LAYER_PARSER(parseMVN)},
-        {"Norm",                                               LAYER_PARSER(parseNorm)},
+        {"LRN",                                                LAYER_PARSER(parseNorm)},
         {"Concat",                                             LAYER_PARSER(parseConcat)},
         // {"Eltwise",                                            LAYER_PARSER(parseEltwise)},
         {"Subtract",                                           LAYER_PARSER(parseSubtract)},
@@ -100,12 +102,12 @@ FrontEnd::FrontEnd(StageBuilder::Ptr stageBuilder, const ie::ICore* core)
         {"ELU",                                                LAYER_PARSER(parseELU)},
         // Flatten, Squeeze and Unsqueeze are represented as Reshape in VPU model
         {"Reshape",                                            LAYER_PARSER(parseReshape)},
-        {"Flatten",                                            LAYER_PARSER(parseReshape)},
+        // {"Flatten",                                            LAYER_PARSER(parseReshape)},
         {"Squeeze",                                            LAYER_PARSER(parseReshape)},
         {"Unsqueeze",                                          LAYER_PARSER(parseReshape)},
         {"Crop",                                               LAYER_PARSER(parseCrop)},
         {"Tile",                                               LAYER_PARSER(parseTile)},
-        {"Normalize",                                          LAYER_PARSER(parseNormalize)},
+        {"NormalizeL2",                                          LAYER_PARSER(parseNormalize)},
         {"PriorBox",                                           LAYER_PARSER(parsePriorBox)},
         {"PriorBoxClustered",                                  LAYER_PARSER(parsePriorBoxClustered)},
         {"Transpose",                                          LAYER_PARSER(parsePermute)},
@@ -124,7 +126,7 @@ FrontEnd::FrontEnd(StageBuilder::Ptr stageBuilder, const ie::ICore* core)
         {"Pad",                                                LAYER_PARSER(parsePad)},
         {"Resample",                                           LAYER_PARSER(parseResample)},
         {"LSTMSequence",                                       LAYER_PARSER(parseRNN)},
-        {"GEMM",                                               LAYER_PARSER(parseGEMM)},
+        {"MatMul",                                               LAYER_PARSER(parseGEMM)},
         {"Log",                                                LAYER_PARSER(parseLog)},
         {"Exp",                                                LAYER_PARSER(parseExp)},
         {"ReverseSequence",                                    LAYER_PARSER(parseReverseSequence)},
@@ -203,12 +205,14 @@ ie::CNNNetwork FrontEnd::convertNetwork(ie::CNNNetwork& network) {
     manager.register_pass<vpu::DynamicToStaticShape>();
     manager.register_pass<vpu::EliminateShapeOfAfterDSR>();
     manager.register_pass<vpu::ConvertExtractImagePatchesToReorgYolo>();
+    manager.register_pass<vpu::ConvertMatMulToFC>();
     // ConstantFolding placed here to avoid precision type missmatch when we try to evaluate nodes with BOOL output.
     // For example evaluate_greater_equal calls set_broadcast function with hardcoded BOOL precision.
     // In set_broadcast function we compare original node's precision with hardcoded so we get an error if we change precision before.
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::ConvertOpSet3ToOpSet2>();
     manager.register_pass<ngraph::pass::ConvertOpSet2ToOpSet1>();
+    // manager.register_pass<ngraph::pass::ConvertMatMulToFCorGemm>();
     // ConvertPrecision must be executed before ConvertOpSet1ToLegacy due to this pass works with operations from opsets only
     static const precisions_array precisions = {
         { ngraph::element::i64, ngraph::element::i32 },
@@ -380,8 +384,8 @@ void FrontEnd::processTrivialCases(const Model& model) {
 void FrontEnd::defaultOnUnsupportedLayerCallback(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs,
                                                  const std::string& extraMessage) {
     const auto& env = CompileEnv::get();
-    VPU_THROW_UNSUPPORTED_LAYER_UNLESS(env.config.compileConfig().ignoreUnknownLayers, "Failed to compile layer \"%v\": %v", node->get_name(), extraMessage);
-    _stageBuilder->addNoneStage(model, node->get_name(), node, inputs, outputs);
+    VPU_THROW_UNSUPPORTED_LAYER_UNLESS(env.config.compileConfig().ignoreUnknownLayers, "Failed to compile layer \"%v\": %v", node->get_friendly_name(), extraMessage);
+    _stageBuilder->addNoneStage(model, node->get_friendly_name(), node, inputs, outputs);
 }
 
 ModelPtr FrontEnd::runCommonPasses(const ie::CNNNetwork& network) {
@@ -512,7 +516,7 @@ ModelPtr FrontEnd::runCommonPasses(ie::CNNNetwork network,
             supportedLayer(node);
             continue;
         }
-
+        std::cout << "Parse layer with name " << node->get_friendly_name() << " and type " << node->get_type_name() << std::endl;
         parseLayer(model, node, inputs, outputs, unsupportedLayer, supportedLayer);
     }
 
@@ -553,6 +557,7 @@ void FrontEnd::getInputAndOutputData(
         DataVector& inputs,
         DataVector& outputs) {
     IE_ASSERT(node != nullptr);
+
     inputs.resize(node->get_input_size());
     for (size_t i = 0; i < node->get_input_size(); ++i) {
         const auto& inputNodeOutput = node->get_input_source_output(i);

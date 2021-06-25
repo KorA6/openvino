@@ -99,7 +99,7 @@ void FrontEnd::parseNormalize(const Model& model, const NodePtr& node, const Dat
 
     int acrossSpatial;
     int channelShared;
-    auto const_axis = std::dynamic_pointer_cast<ngraph::opset4::Constant> (normalize->input(1).get_source_output().get_node_shared_ptr());
+    auto const_axis = std::dynamic_pointer_cast<ngraph::opset4::Constant>(normalize->input(1).get_source_output().get_node_shared_ptr());
     IE_ASSERT(const_axis != nullptr);
 
     

@@ -196,7 +196,6 @@ Data ModelObj::duplicateData(
         const auto& desc = newDesc != DataDesc() ? newDesc 
                                                  : origData->desc();
 
-        std::cout << desc.totalDimSize() << " <--- desc.totalDimSize(), desc.elemSize() --> " << desc.elemSize() << std::endl;
         VPU_THROW_UNLESS(desc.totalDimSize() * desc.elemSize() == content->byteSize(),
             "duplicateData error: while duplicating {} Const data got different "
             "desc and content byte sizes ({} and {} respectively)",

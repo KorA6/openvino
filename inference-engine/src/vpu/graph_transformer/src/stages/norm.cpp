@@ -82,12 +82,13 @@ private:
 }  // namespace
 
 void FrontEnd::parseNorm(const Model& model, const NodePtr& node, const DataVector& inputs, const DataVector& outputs) const {
-    IE_ASSERT(inputs.size() == 1);
+    // IE_ASSERT(inputs.size() == 1);
     IE_ASSERT(outputs.size() == 1);
     const auto& lrn = ngraph::as_type_ptr<ngraph::op::v0::LRN>(node);
     IE_ASSERT(lrn != nullptr);
-    
-    auto stage = model->addNewStage<LRNStage>(lrn->get_name(), StageType::LRN, lrn, inputs, outputs); // not sure 
+    DataVector newInput;
+    newInput.emplace_back(inputs[0]);
+    auto stage = model->addNewStage<LRNStage>(lrn->get_name(), StageType::LRN, lrn, newInput, outputs);
     stage->attrs().set<int>("size", lrn->get_nsize());
     stage->attrs().set<int>("k", lrn->get_bias());  //not sure
     stage->attrs().set<float>("alpha", lrn->get_alpha());
